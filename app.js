@@ -68,7 +68,10 @@ let cart = JSON.parse(localStorage.getItem('laben_cart') || '[]');
 let orders = JSON.parse(localStorage.getItem('laben_orders') || '[]');
 let nextId = menuData.reduce((a, b) => Math.max(a, b.id), 0) + 1;
 let currentCat = 'all';
-let adminTab = 'orders'; // 'orders' or 'menu'
+let adminTab = 'orders';
+
+// UPI payment confirmed flag
+let upiPaymentConfirmed = false;
 
 function saveMenu()   { localStorage.setItem('laben_menu',   JSON.stringify(menuData)); }
 function saveCart()   { localStorage.setItem('laben_cart',   JSON.stringify(cart)); }
@@ -216,21 +219,34 @@ function scrollToOrder() {
 // ===== ORDER PLACEMENT =====
 function placeOrder(e) {
   e.preventDefault();
+
   if (cart.length === 0) {
     alert('Your cart is empty! Please add some items first.');
     return;
   }
-  const name = document.getElementById('ord-name').value;
-  const phone = document.getElementById('ord-phone').value;
-  const address = document.getElementById('ord-address').value;
+
   const payment = document.getElementById('ord-payment').value;
-  const note = document.getElementById('ord-note').value;
+
+  // Block UPI orders that haven't been confirmed via modal
+  if (payment === 'UPI' && !upiPaymentConfirmed) {
+    const amount = getCartTotal();
+    if (amount <= 0) {
+      alert('Your cart is empty! Please add items first.');
+      return;
+    }
+    openUpiModal(amount);
+    return;
+  }
+
+  const name    = document.getElementById('ord-name').value;
+  const phone   = document.getElementById('ord-phone').value;
+  const address = document.getElementById('ord-address').value;
+  const note    = document.getElementById('ord-note').value;
 
   const orderId = 'LBN' + Date.now().toString().slice(-6);
   const now = new Date();
   const timeStr = now.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
 
-  // Save order to storage
   const newOrder = {
     id: orderId,
     time: timeStr,
@@ -239,7 +255,7 @@ function placeOrder(e) {
     note: note || '',
     items: JSON.parse(JSON.stringify(cart)),
     total: getCartTotal(),
-    status: 'new' // new | preparing | delivered
+    status: 'new'
   };
   orders.unshift(newOrder);
   saveOrders();
@@ -257,8 +273,12 @@ function placeOrder(e) {
       ${note ? `<br><span class="small">Note: ${note}</span>` : ''}
       <br><span class="small text-success">We'll call you to confirm your order shortly. 🙏</span>
     </div>`;
+
+  // Reset state
+  upiPaymentConfirmed = false;
   clearCart();
   document.getElementById('orderForm').reset();
+  document.getElementById('upi-info-hint').style.display = 'none';
   conf.scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -293,18 +313,18 @@ function adminLogout() {
 }
 
 function adminAddItem() {
-  const name = document.getElementById('adm-name').value.trim();
+  const name  = document.getElementById('adm-name').value.trim();
   const price = parseFloat(document.getElementById('adm-price').value);
-  const desc = document.getElementById('adm-desc').value.trim();
-  const cat = document.getElementById('adm-cat').value;
+  const desc  = document.getElementById('adm-desc').value.trim();
+  const cat   = document.getElementById('adm-cat').value;
   if (!name || !price) { alert('Please enter item name and price.'); return; }
   menuData.push({ id: nextId++, name, desc: desc || '', price, cat });
   saveMenu();
   renderAdminList();
   renderMenu();
-  document.getElementById('adm-name').value = '';
+  document.getElementById('adm-name').value  = '';
   document.getElementById('adm-price').value = '';
-  document.getElementById('adm-desc').value = '';
+  document.getElementById('adm-desc').value  = '';
 }
 
 function adminDeleteItem(id) {
@@ -313,6 +333,26 @@ function adminDeleteItem(id) {
   saveMenu();
   renderAdminList();
   renderMenu();
+}
+
+// ===== FIXED: renderAdminList is now a proper function =====
+function renderAdminList() {
+  document.getElementById('adm-count').textContent = menuData.length;
+  const list = document.getElementById('adm-items-list');
+  list.innerHTML = menuData.map(item => `
+    <div class="adm-item">
+      <div class="adm-item-info">
+        <div class="adm-item-name">${item.name}</div>
+        <div class="adm-item-meta">
+          <span class="cat-badge">${item.cat}</span>
+          ${item.desc ? `<span class="ms-1">${item.desc.slice(0, 35)}${item.desc.length > 35 ? '...' : ''}</span>` : ''}
+        </div>
+      </div>
+      <span class="adm-item-price">₹${item.price}</span>
+      <button class="adm-del-btn" onclick="adminDeleteItem(${item.id})" title="Delete">
+        <i class="bi bi-trash3-fill"></i>
+      </button>
+    </div>`).join('');
 }
 
 function renderOrdersList() {
@@ -327,13 +367,13 @@ function renderOrdersList() {
   badge.style.display = newCount > 0 ? 'inline-block' : 'none';
 
   // Stats row
-  const totalRevenue = orders.filter(o=>o.status==='delivered').reduce((s,o)=>s+o.total,0);
+  const totalRevenue = orders.filter(o => o.status === 'delivered').reduce((s, o) => s + o.total, 0);
   const statsEl = document.getElementById('adm-order-stats');
   if (statsEl) {
     statsEl.innerHTML = `
       <div class="adm-stat-pill"><i class="bi bi-receipt me-1"></i><strong>${orders.length}</strong> Total</div>
-      <div class="adm-stat-pill new-pill"><i class="bi bi-bell me-1"></i><strong>${orders.filter(o=>o.status==='new').length}</strong> New</div>
-      <div class="adm-stat-pill prep-pill"><i class="bi bi-fire me-1"></i><strong>${orders.filter(o=>o.status==='preparing').length}</strong> Preparing</div>
+      <div class="adm-stat-pill new-pill"><i class="bi bi-bell me-1"></i><strong>${orders.filter(o => o.status === 'new').length}</strong> New</div>
+      <div class="adm-stat-pill prep-pill"><i class="bi bi-fire me-1"></i><strong>${orders.filter(o => o.status === 'preparing').length}</strong> Preparing</div>
       <div class="adm-stat-pill done-pill"><i class="bi bi-check2-circle me-1"></i><strong>₹${totalRevenue}</strong> Earned</div>`;
   }
 
@@ -348,11 +388,9 @@ function renderOrdersList() {
   const payIcons     = { COD:'💵', UPI:'📱', Card:'💳' };
 
   wrap.innerHTML = filtered.map(o => {
-    const itemsTotal = o.items.reduce((s,it)=>s+(it.price*it.qty),0);
+    const itemsTotal = o.items.reduce((s, it) => s + (it.price * it.qty), 0);
     return `
     <div class="adm-order-card" id="order-card-${o.id}" style="border-left:4px solid ${statusColors[o.status]}">
-
-      <!-- Header row -->
       <div class="adm-order-head">
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <span class="adm-order-id">#${o.id}</span>
@@ -362,8 +400,6 @@ function renderOrdersList() {
           ${statusLabels[o.status]}
         </span>
       </div>
-
-      <!-- Section: Customer Info -->
       <div class="adm-detail-section">
         <div class="adm-detail-label"><i class="bi bi-person-fill me-1"></i>Customer Details</div>
         <div class="adm-detail-grid">
@@ -385,14 +421,12 @@ function renderOrdersList() {
           </div>
         </div>
       </div>
-
-      <!-- Section: Payment -->
       <div class="adm-detail-section">
         <div class="adm-detail-label"><i class="bi bi-credit-card-fill me-1"></i>Payment Details</div>
         <div class="adm-detail-grid">
           <div class="adm-detail-row">
             <span class="adm-detail-key">Method</span>
-            <span class="adm-detail-val"><span class="adm-pay-badge">${payIcons[o.payment]||'💰'} ${o.payment}</span></span>
+            <span class="adm-detail-val"><span class="adm-pay-badge">${payIcons[o.payment] || '💰'} ${o.payment}</span></span>
           </div>
           <div class="adm-detail-row">
             <span class="adm-detail-key">Amount</span>
@@ -400,12 +434,10 @@ function renderOrdersList() {
           </div>
         </div>
       </div>
-
-      <!-- Section: Order Items -->
       <div class="adm-detail-section">
         <div class="adm-detail-label"><i class="bi bi-bag-fill me-1"></i>Order Items</div>
         <div class="adm-items-table">
-          ${o.items.map(it=>`
+          ${o.items.map(it => `
             <div class="adm-item-row">
               <span class="adm-item-row-name">${it.name}</span>
               <span class="adm-item-row-qty">×${it.qty}</span>
@@ -418,21 +450,17 @@ function renderOrdersList() {
           </div>
         </div>
       </div>
-
       ${o.note ? `
       <div class="adm-detail-section">
         <div class="adm-detail-label"><i class="bi bi-chat-left-text-fill me-1"></i>Special Instructions</div>
         <div class="adm-note-box">${o.note}</div>
       </div>` : ''}
-
-      <!-- Actions -->
       <div class="adm-order-actions-row">
         ${o.status === 'new'       ? `<button class="adm-status-btn preparing" onclick="updateOrderStatus('${o.id}','preparing')"><i class="bi bi-fire me-1"></i>Start Preparing</button>` : ''}
         ${o.status === 'preparing' ? `<button class="adm-status-btn delivered" onclick="updateOrderStatus('${o.id}','delivered')"><i class="bi bi-check2-circle me-1"></i>Mark Delivered</button>` : ''}
         ${o.status === 'delivered' ? `<span class="adm-done-tag"><i class="bi bi-check-circle-fill me-1"></i>Order Completed</span>` : ''}
         <button class="adm-del-btn" onclick="deleteOrder('${o.id}')" title="Delete order"><i class="bi bi-trash3"></i> Delete</button>
       </div>
-
     </div>`;
   }).join('');
 }
@@ -455,25 +483,6 @@ function clearAllOrders() {
   saveOrders();
   renderOrdersList();
 }
-
-
-  document.getElementById('adm-count').textContent = menuData.length;
-  const list = document.getElementById('adm-items-list');
-  list.innerHTML = menuData.map(item => `
-    <div class="adm-item">
-      <div class="adm-item-info">
-        <div class="adm-item-name">${item.name}</div>
-        <div class="adm-item-meta">
-          <span class="cat-badge">${item.cat}</span>
-          ${item.desc ? `<span class="ms-1">${item.desc.slice(0, 35)}${item.desc.length > 35 ? '...' : ''}</span>` : ''}
-        </div>
-      </div>
-      <span class="adm-item-price">₹${item.price}</span>
-      <button class="adm-del-btn" onclick="adminDeleteItem(${item.id})" title="Delete">
-        <i class="bi bi-trash3-fill"></i>
-      </button>
-    </div>`).join('');
-
 
 // ===== SCROLL ANIMATIONS =====
 function observeFadeIn() {
@@ -500,6 +509,95 @@ window.addEventListener('scroll', () => {
     nav.style.boxShadow = 'none';
   }
 });
+
+// ===== UPI FUNCTIONS (called from inline script in HTML) =====
+// These are defined here so placeOrder can set upiPaymentConfirmed
+var UPI_ID   = "9665539828@ibl";
+var UPI_NAME = "The Laben Cafe";
+
+function handlePaymentChange() {
+  var method = document.getElementById('ord-payment').value;
+  document.getElementById('upi-info-hint').style.display = method === 'UPI' ? 'flex' : 'none';
+  // Reset UPI confirmed flag if user switches payment method
+  if (method !== 'UPI') {
+    upiPaymentConfirmed = false;
+  }
+}
+
+function copyUpiId() {
+  navigator.clipboard.writeText(UPI_ID).then(function() { alert('Copied: ' + UPI_ID); });
+}
+
+function openUpiModal(amount) {
+  document.getElementById('upi-display-amount').textContent = amount;
+  document.getElementById('upi-id-text').textContent = UPI_ID;
+  var upiLink = 'upi://pay?pa=' + UPI_ID + '&pn=' + encodeURIComponent(UPI_NAME) + '&am=' + amount + '&cu=INR&tn=The%20Laben%20Cafe%20Order';
+  document.getElementById('upi-deep-link').href = upiLink;
+  document.getElementById('upi-qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(upiLink);
+  document.getElementById('upiModal').classList.add('active');
+}
+
+function closeUpiModal() {
+  document.getElementById('upiModal').classList.remove('active');
+}
+
+function confirmUpiPayment() {
+  closeUpiModal();
+  // Mark UPI as paid and auto-submit the form
+  upiPaymentConfirmed = true;
+
+  // Validate form fields before placing order
+  var name    = document.getElementById('ord-name').value.trim();
+  var phone   = document.getElementById('ord-phone').value.trim();
+  var address = document.getElementById('ord-address').value.trim();
+
+  if (!name || !phone || !address) {
+    alert('Please fill in your Name, Phone, and Address before confirming payment.');
+    upiPaymentConfirmed = false;
+    return;
+  }
+
+  // Now place the order directly
+  var payment = 'UPI';
+  var note    = document.getElementById('ord-note').value;
+
+  var orderId = 'LBN' + Date.now().toString().slice(-6);
+  var now     = new Date();
+  var timeStr = now.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
+
+  var newOrder = {
+    id: orderId,
+    time: timeStr,
+    timestamp: Date.now(),
+    name: name, phone: phone, address: address, payment: payment,
+    note: note || '',
+    items: JSON.parse(JSON.stringify(cart)),
+    total: getCartTotal(),
+    status: 'new'
+  };
+  orders.unshift(newOrder);
+  saveOrders();
+
+  var conf = document.getElementById('order-confirmation');
+  conf.style.display = 'block';
+  conf.innerHTML = `
+    <div class="order-success">
+      <i class="bi bi-check-circle-fill me-2"></i>
+      <strong>Order Placed! UPI Payment Confirmed. ✅</strong><br>
+      <span class="small">Order ID: <strong>${orderId}</strong></span><br>
+      <span class="small">Name: ${name} | Phone: ${phone}</span><br>
+      <span class="small">Delivery to: ${address}</span><br>
+      <span class="small">Payment: UPI | Total: <strong>₹${getCartTotal()}</strong></span>
+      ${note ? `<br><span class="small">Note: ${note}</span>` : ''}
+      <br><span class="small text-success">We'll prepare your order shortly. Thank you! 🙏</span>
+    </div>`;
+
+  upiPaymentConfirmed = false;
+  clearCart();
+  document.getElementById('orderForm').reset();
+  document.getElementById('upi-info-hint').style.display = 'none';
+  conf.scrollIntoView({ behavior: 'smooth' });
+}
 
 // ===== INIT =====
 renderMenu();
