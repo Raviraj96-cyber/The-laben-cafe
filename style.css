@@ -1105,6 +1105,62 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif; }
   margin-top: 8px; animation: slide-up 0.3s ease;
 }
 
+/* ===== UTR / TRANSACTION ID INPUT (NEW) ===== */
+.upi-utr-section {
+  background: #fffbeb;
+  border: 1.5px solid #fde68a;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 14px;
+  text-align: left;
+}
+.upi-utr-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #92400e;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.upi-utr-label i { color: #d97706; font-size: 14px; }
+.upi-utr-hint {
+  font-size: 11px;
+  color: #a16207;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.upi-utr-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #fcd34d;
+  border-radius: 8px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+  color: #1a1410;
+  outline: none;
+  transition: all 0.25s;
+  letter-spacing: 0.5px;
+}
+.upi-utr-input:focus {
+  border-color: #5f259f;
+  box-shadow: 0 0 0 3px rgba(95,37,159,0.12);
+}
+.upi-utr-input::placeholder {
+  font-weight: 400;
+  color: #aaa;
+  letter-spacing: 0;
+}
+.upi-utr-error {
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 5px;
+  padding: 4px 0;
+}
+
 /* ===== SCROLL REVEAL ===== */
 .reveal {
   opacity: 0;
