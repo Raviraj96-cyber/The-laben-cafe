@@ -31,8 +31,6 @@ const ITEM_IMAGES = {
   'Cheese Corn Maggi':              'Cheese_Corn_Maggi.jpg',
   'Cheese Chilli Maggi':            'Cheese_Chilli_Maggi.webp',
 };
-};
-
 const DEFAULT_MENU = [
   // Coffee
   { id:1,  name:'Cold Coffee With Crush',             desc:'Refreshing cold coffee with crush syrup',          price:70,  cat:'coffee'   },
