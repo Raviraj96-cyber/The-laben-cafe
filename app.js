@@ -603,27 +603,3 @@ function confirmUpiPayment() {
 // ===== INIT =====
 renderMenu();
 updateCartUI();
-<script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyAQ_8cq9DWzXb5bgl2SpY5xI5TYKd-6dfA",
-    authDomain: "laben-cafe.firebaseapp.com",
-    databaseURL: "https://laben-cafe-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "laben-cafe",
-    storageBucket: "laben-cafe.firebasestorage.app",
-    messagingSenderId: "236045385314",
-    appId: "1:236045385314:web:a363accd4d0b9f0fe35b3b",
-    measurementId: "G-9FDYBQXZQZ"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-</script>
