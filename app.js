@@ -9,8 +9,8 @@ const CATEGORY_IMAGES = {
 };
 
 const ITEM_IMAGES = {
-  'Cold Coffee With Crush':             'laban-cafe/imeges/cold_cofee_with_crush.jpg',
-  'Cold Coffee With Icecream':          'laban-cafe/imeges/cold-coffee-icecream.jpg',
+  'Cold Coffee With Crush':             '"C:\Users\Raviraj\Documents\laban-cafe-website\cold_cofee_with_crush.jpg"',
+  'Cold Coffee With Icecream':          '"C:\Users\Raviraj\Documents\laban-cafe-website\cold-coffee-icecream.jpg"',
   'Hot Coffee':                         'laban-cafe/imeges/hot_coffe.jpg',
   'Black Coffee':                       'laban-cafe/imeges/balck_coffee.jpg',
   'Salted Fries':                       'laban-cafe/imeges/salted_faris.webp',
