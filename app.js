@@ -74,6 +74,21 @@ function saveMenu()   { localStorage.setItem('laben_menu',   JSON.stringify(menu
 function saveCart()   { localStorage.setItem('laben_cart',   JSON.stringify(cart));     }
 function saveOrders() { localStorage.setItem('laben_orders', JSON.stringify(orders));   }
 
+// ===== FIREBASE HELPER =====
+// Saves order to Firebase Realtime Database if available
+function saveOrderToFirebase(orderData) {
+  try {
+    if (window._firebaseDb && window._firebasePush && window._firebaseRef) {
+      const ordersRef = window._firebaseRef(window._firebaseDb, 'orders');
+      window._firebasePush(ordersRef, orderData)
+        .then(() => console.log('✅ Order saved to Firebase:', orderData.id))
+        .catch(err => console.warn('⚠️ Firebase save failed:', err.message));
+    }
+  } catch (e) {
+    console.warn('⚠️ Firebase not ready:', e.message);
+  }
+}
+
 // ===== RENDER MENU =====
 function getItemImage(item) {
   // 1. Try the exact item image path
@@ -283,6 +298,9 @@ function placeOrder(e) {
   orders.unshift(newOrder);
   saveOrders();
 
+  // ✅ Save to Firebase
+  saveOrderToFirebase(newOrder);
+
   showOrderConfirmation(orderId, name, phone, address, payment, note, getCartTotal());
   upiPaymentConfirmed = false;
   clearCart();
@@ -446,6 +464,7 @@ function renderOrdersList() {
         <div class="adm-detail-grid">
           <div class="adm-detail-row"><span class="adm-detail-key">Method</span><span class="adm-detail-val"><span class="adm-pay-badge">${payIcons[o.payment]||'💰'} ${o.payment}</span></span></div>
           <div class="adm-detail-row"><span class="adm-detail-key">Amount</span><span class="adm-detail-val" style="font-size:1.1rem;font-weight:700;color:var(--accent)">₹${o.total}</span></div>
+          ${o.utrId ? `<div class="adm-detail-row"><span class="adm-detail-key">UTR ID</span><span class="adm-detail-val" style="font-family:monospace;font-weight:600;color:#5f259f;">${o.utrId}</span></div>` : ''}
         </div>
       </div>
       <div class="adm-detail-section">
@@ -544,6 +563,11 @@ function openUpiModal(amount) {
   var upiLink = 'upi://pay?pa=' + UPI_ID + '&pn=' + encodeURIComponent(UPI_NAME) + '&am=' + amount + '&cu=INR&tn=The%20Laben%20Cafe%20Order';
   document.getElementById('upi-deep-link').href   = upiLink;
   document.getElementById('upi-qr-img').src       = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(upiLink);
+  // Reset UTR input when modal opens
+  var utrInput = document.getElementById('upi-utr-input');
+  if (utrInput) { utrInput.value = ''; }
+  var utrError = document.getElementById('upi-utr-error');
+  if (utrError) { utrError.style.display = 'none'; }
   document.getElementById('upiModal').classList.add('active');
 }
 
@@ -551,19 +575,55 @@ function closeUpiModal() {
   document.getElementById('upiModal').classList.remove('active');
 }
 
-function confirmUpiPayment() {
-  closeUpiModal();
-  upiPaymentConfirmed = true;
+// ===== UTR VALIDATION =====
+// Called on each keystroke in the UTR input field
+function validateUtrInput() {
+  var input = document.getElementById('upi-utr-input');
+  var error = document.getElementById('upi-utr-error');
+  if (!input || !error) return;
+  var val = input.value.trim();
+  if (val.length > 0 && val.length < 8) {
+    error.style.display = 'block';
+  } else {
+    error.style.display = 'none';
+  }
+}
 
+function confirmUpiPayment() {
+  // ===== STEP 1: Validate UTR / Transaction ID =====
+  var utrInput = document.getElementById('upi-utr-input');
+  var utrError = document.getElementById('upi-utr-error');
+  var utrValue = utrInput ? utrInput.value.trim() : '';
+
+  if (!utrValue || utrValue.length < 8) {
+    if (utrError) utrError.style.display = 'block';
+    if (utrInput) {
+      utrInput.focus();
+      utrInput.style.borderColor = '#dc2626';
+      utrInput.style.boxShadow = '0 0 0 3px rgba(220,38,38,0.15)';
+      setTimeout(function() {
+        utrInput.style.borderColor = '';
+        utrInput.style.boxShadow = '';
+      }, 2500);
+    }
+    return; // ❌ STOP — do NOT place order without valid UTR
+  }
+
+  // ===== STEP 2: Validate customer details =====
   var name    = document.getElementById('ord-name').value.trim();
   var phone   = document.getElementById('ord-phone').value.trim();
   var address = document.getElementById('ord-address').value.trim();
 
   if (!name || !phone || !address) {
+    closeUpiModal();
     alert('Please fill in your Name, Phone, and Address before confirming payment.');
     upiPaymentConfirmed = false;
     return;
   }
+
+  // ===== STEP 3: All valid — place the order =====
+  closeUpiModal();
+  upiPaymentConfirmed = true;
 
   var note    = document.getElementById('ord-note').value;
   var orderId = 'LBN' + Date.now().toString().slice(-6);
@@ -576,6 +636,7 @@ function confirmUpiPayment() {
   var newOrder = {
     id: orderId, time: timeStr, timestamp: Date.now(),
     name, phone, address, payment: 'UPI',
+    utrId: utrValue,   // ✅ Store UTR ID with the order
     note: note || '',
     items: JSON.parse(JSON.stringify(cart)),
     total: getCartTotal(),
@@ -584,6 +645,9 @@ function confirmUpiPayment() {
 
   orders.unshift(newOrder);
   saveOrders();
+
+  // ✅ Save to Firebase
+  saveOrderToFirebase(newOrder);
 
   var conf = document.getElementById('order-confirmation');
   conf.style.display = 'block';
@@ -594,7 +658,8 @@ function confirmUpiPayment() {
       <span class="small">Order ID: <strong>${orderId}</strong></span><br>
       <span class="small">Name: ${name} | Phone: ${phone}</span><br>
       <span class="small">Delivery to: ${address}</span><br>
-      <span class="small">Payment: UPI | Total: <strong>₹${getCartTotal()}</strong></span>
+      <span class="small">Payment: UPI | Total: <strong>₹${getCartTotal()}</strong></span><br>
+      <span class="small">UTR/Transaction ID: <strong style="font-family:monospace;color:#5f259f;">${utrValue}</strong></span>
       ${note ? `<br><span class="small">Note: ${note}</span>` : ''}
       <br><span class="small text-success">We'll prepare your order shortly. Thank you! 🙏</span>
     </div>`;
