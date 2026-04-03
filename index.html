@@ -511,6 +511,44 @@
     els.forEach(function(el) { observer.observe(el); });
   })();
 </script>
+<!-- Firebase SDKs -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getDatabase, ref, onValue, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+  // Your Firebase config
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "laben-cafe.firebaseapp.com",
+    databaseURL: "https://laben-cafe-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "laben-cafe",
+    storageBucket: "laben-cafe.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // Example: Read menu items
+  const menuRef = ref(db, "menu_items");
+  onValue(menuRef, (snapshot) => {
+    const data = snapshot.val();
+    console.log(data); // Shows menu in browser console
+  });
+
+  // Example: Save order
+  function placeOrder(cartItems, userId) {
+    const ordersRef = ref(db, "orders");
+    push(ordersRef, {
+      userId,
+      items: cartItems,
+      total: cartItems.reduce((sum, i) => sum + i.price * i.qty, 0),
+      status: "pending"
+    });
+  }
+</script>
 
 </body>
 </html>
