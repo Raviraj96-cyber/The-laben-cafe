@@ -1,99 +1,116 @@
-
 // ===== MENU DATA =====
 const CATEGORY_IMAGES = {
-  coffee: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=400&q=80',
-  fries:  'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80',
+  coffee:   'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=400&q=80',
+  fries:    'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80',
   sandwich: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&q=80',
-  pizza:  'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&q=80',
-  burger: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80',
-  maggi:  'https://images.unsplash.com/photo-1555126634-323283e090fa?w=400&q=80',
+  pizza:    'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&q=80',
+  burger:   'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80',
+  maggi:    'https://images.unsplash.com/photo-1555126634-323283e090fa?w=400&q=80',
 };
 
 const ITEM_IMAGES = {
-  'Cold Coffee With Crush':         'laban-cafe/imeges/cold_cofee_with_crush.jpg',
-  'Cold Coffee With Icecream':      'cold-coffee-icecream.jpg',
-  'Hot Coffee':                     'hot_coffe.jpg',
-  'Black Coffee':                   'balck_coffee.jpg',
-  'Salted Fries':                   'salted_faris.webp',
-  'Peri-Peri Fries':                'peri_peri_fries.jpg',
-  'Peri-Peri Fries With Masala':    'Peri-Peri Fries With Masala.jpg',
-  'Veg Sandwich':                   'Veg Sandwich.jpg',
-  'Cheese Corn Sandwich':           'Cheese Corn Sandwich.webp',
-  'Cheese Chilli Sandwich':         'Chili-Cheese-Sandwich.jpg',
-  'Plane Cheese Pizza':             'Plane Cheese Pizza.jpg',
-  'Veg Pizza':                      'Veg_Pizza.jpg',
-  'Cheese Corn Pizza':              'Cheese_Corn_Pizza.jpg',
-  'Cheese Paneer Pizza':            'Cheese_Paneer_Pizza.jpg',
-  'Aloo Tikki Burger':              'Aloo_Tikki_Burger.webp',
-  'Aloo Tikki Cheese Burger':       'Aloo_Tikki_Cheese_Burger.webp',
-  'Laben Café Special Maharaja Burger': 'Aloo_Tikki_Cheese_Burger.webp',
-  'Plane Maggi':                    'Plane_Maggi.jpg',
-  'Masala Maggi':                   'Masala_Maggi.jpg',
-  'Cheese Corn Maggi':              'Cheese_Corn_Maggi.jpg',
-  'Cheese Chilli Maggi':            'Cheese_Chilli_Maggi.webp',
+  'Cold Coffee With Crush':             'laban-cafe/imeges/cold_cofee_with_crush.jpg',
+  'Cold Coffee With Icecream':          'laban-cafe/imeges/cold-coffee-icecream.jpg',
+  'Hot Coffee':                         'laban-cafe/imeges/hot_coffe.jpg',
+  'Black Coffee':                       'laban-cafe/imeges/balck_coffee.jpg',
+  'Salted Fries':                       'laban-cafe/imeges/salted_faris.webp',
+  'Peri-Peri Fries':                    'laban-cafe/imeges/peri_peri_fries.jpg',
+  'Peri-Peri Fries With Masala':        'laban-cafe/imeges/Peri-Peri Fries With Masala.jpg',
+  'Veg Sandwich':                       'laban-cafe/imeges/Veg Sandwich.jpg',
+  'Cheese Corn Sandwich':               'laban-cafe/imeges/Cheese Corn Sandwich.webp',
+  'Cheese Chilli Sandwich':             'laban-cafe/imeges/Chili-Cheese-Sandwich.jpg',
+  'Plane Cheese Pizza':                 'laban-cafe/imeges/Plane Cheese Pizza.jpg',
+  'Veg Pizza':                          'laban-cafe/imeges/Veg_Pizza.jpg',
+  'Cheese Corn Pizza':                  'laban-cafe/imeges/Cheese_Corn_Pizza.jpg',
+  'Cheese Paneer Pizza':                'laban-cafe/imeges/Cheese_Paneer_Pizza.jpg',
+  'Aloo Tikki Burger':                  'laban-cafe/imeges/Aloo_Tikki_Burger.webp',
+  'Aloo Tikki Cheese Burger':           'laban-cafe/imeges/Aloo_Tikki_Cheese_Burger.webp',
+  'Laben Café Special Maharaja Burger': 'laban-cafe/imeges/Aloo_Tikki_Cheese_Burger.webp',
+  'Plane Maggi':                        'laban-cafe/imeges/Plane_Maggi.jpg',
+  'Masala Maggi':                       'laban-cafe/imeges/Masala_Maggi.jpg',
+  'Cheese Corn Maggi':                  'laban-cafe/imeges/Cheese_Corn_Maggi.jpg',
+  'Cheese Chilli Maggi':                'laban-cafe/imeges/Cheese_Chilli_Maggi.webp',
 };
 
 const DEFAULT_MENU = [
   // Coffee
-  { id:1,  name:'Cold Coffee With Crush',       desc:'Refreshing cold coffee with crush syrup',     price:70,  cat:'coffee' },
-  { id:2,  name:'Cold Coffee With Icecream',    desc:'Chilled coffee topped with a scoop of ice cream', price:80, cat:'coffee' },
-  { id:3,  name:'Hot Coffee',                   desc:'Classic warm brew, comforting & rich',        price:30,  cat:'coffee' },
-  { id:4,  name:'Black Coffee',                 desc:'Strong, pure espresso-style black coffee',    price:30,  cat:'coffee' },
+  { id:1,  name:'Cold Coffee With Crush',             desc:'Refreshing cold coffee with crush syrup',          price:70,  cat:'coffee'   },
+  { id:2,  name:'Cold Coffee With Icecream',          desc:'Chilled coffee topped with a scoop of ice cream',  price:80,  cat:'coffee'   },
+  { id:3,  name:'Hot Coffee',                         desc:'Classic warm brew, comforting & rich',             price:30,  cat:'coffee'   },
+  { id:4,  name:'Black Coffee',                       desc:'Strong, pure espresso-style black coffee',         price:30,  cat:'coffee'   },
   // Fries
-  { id:5,  name:'Salted Fries',                 desc:'Crispy golden fries with seasoned salt',      price:70,  cat:'fries' },
-  { id:6,  name:'Peri-Peri Fries',              desc:'Spicy peri-peri seasoned crispy fries',       price:80,  cat:'fries' },
-  { id:7,  name:'Peri-Peri Fries With Masala',  desc:'Peri-peri fries with extra masala kick',      price:90,  cat:'fries' },
+  { id:5,  name:'Salted Fries',                       desc:'Crispy golden fries with seasoned salt',           price:70,  cat:'fries'    },
+  { id:6,  name:'Peri-Peri Fries',                    desc:'Spicy peri-peri seasoned crispy fries',            price:80,  cat:'fries'    },
+  { id:7,  name:'Peri-Peri Fries With Masala',        desc:'Peri-peri fries with extra masala kick',           price:90,  cat:'fries'    },
   // Sandwich
-  { id:8,  name:'Veg Sandwich',                 desc:'Fresh veggies in toasted bread',              price:60,  cat:'sandwich' },
-  { id:9,  name:'Cheese Corn Sandwich',         desc:'Melted cheese and sweet corn grilled sandwich',price:90, cat:'sandwich' },
-  { id:10, name:'Cheese Chilli Sandwich',       desc:'Spicy chilli & gooey cheese in crispy bread', price:90,  cat:'sandwich' },
+  { id:8,  name:'Veg Sandwich',                       desc:'Fresh veggies in toasted bread',                   price:60,  cat:'sandwich' },
+  { id:9,  name:'Cheese Corn Sandwich',               desc:'Melted cheese and sweet corn grilled sandwich',    price:90,  cat:'sandwich' },
+  { id:10, name:'Cheese Chilli Sandwich',             desc:'Spicy chilli & gooey cheese in crispy bread',      price:90,  cat:'sandwich' },
   // Pizza
-  { id:11, name:'Plane Cheese Pizza',           desc:'Classic mozzarella on homemade sauce base',  price:130, cat:'pizza' },
-  { id:12, name:'Veg Pizza',                    desc:'Loaded with fresh seasonal vegetables',       price:150, cat:'pizza' },
-  { id:13, name:'Cheese Corn Pizza',            desc:'Sweet corn and extra cheese on thin crust',   price:150, cat:'pizza' },
-  { id:14, name:'Cheese Paneer Pizza',          desc:'Chunky paneer cubes with melted cheese',      price:150, cat:'pizza' },
+  { id:11, name:'Plane Cheese Pizza',                 desc:'Classic mozzarella on homemade sauce base',        price:130, cat:'pizza'    },
+  { id:12, name:'Veg Pizza',                          desc:'Loaded with fresh seasonal vegetables',            price:150, cat:'pizza'    },
+  { id:13, name:'Cheese Corn Pizza',                  desc:'Sweet corn and extra cheese on thin crust',        price:150, cat:'pizza'    },
+  { id:14, name:'Cheese Paneer Pizza',                desc:'Chunky paneer cubes with melted cheese',           price:150, cat:'pizza'    },
   // Burger
-  { id:15, name:'Aloo Tikki Burger',            desc:'Spiced aloo tikki patty in a soft bun',       price:70,  cat:'burger' },
-  { id:16, name:'Aloo Tikki Cheese Burger',     desc:'Tikki patty with melted cheese slice',        price:90,  cat:'burger' },
-  { id:17, name:'Laben Café Special Maharaja Burger', desc:'Our signature mega burger — a must try!', price:120, cat:'burger' },
+  { id:15, name:'Aloo Tikki Burger',                  desc:'Spiced aloo tikki patty in a soft bun',            price:70,  cat:'burger'   },
+  { id:16, name:'Aloo Tikki Cheese Burger',           desc:'Tikki patty with melted cheese slice',             price:90,  cat:'burger'   },
+  { id:17, name:'Laben Café Special Maharaja Burger', desc:'Our signature mega burger — a must try!',          price:120, cat:'burger'   },
   // Maggi
-  { id:18, name:'Plane Maggi',                  desc:'Simple, comforting classic Maggi noodles',    price:80,  cat:'maggi' },
-  { id:19, name:'Masala Maggi',                 desc:'Extra spicy masala Maggi loaded with flavour', price:90, cat:'maggi' },
-  { id:20, name:'Cheese Corn Maggi',            desc:'Creamy cheese and sweet corn Maggi',          price:100, cat:'maggi' },
-  { id:21, name:'Cheese Chilli Maggi',          desc:'Spicy chilli and melted cheese Maggi',        price:100, cat:'maggi' },
+  { id:18, name:'Plane Maggi',                        desc:'Simple, comforting classic Maggi noodles',         price:80,  cat:'maggi'    },
+  { id:19, name:'Masala Maggi',                       desc:'Extra spicy masala Maggi loaded with flavour',     price:90,  cat:'maggi'    },
+  { id:20, name:'Cheese Corn Maggi',                  desc:'Creamy cheese and sweet corn Maggi',               price:100, cat:'maggi'    },
+  { id:21, name:'Cheese Chilli Maggi',                desc:'Spicy chilli and melted cheese Maggi',             price:100, cat:'maggi'    },
 ];
 
 // ===== STATE =====
 let menuData = JSON.parse(localStorage.getItem('laben_menu') || 'null') || JSON.parse(JSON.stringify(DEFAULT_MENU));
-let cart = JSON.parse(localStorage.getItem('laben_cart') || '[]');
-let orders = JSON.parse(localStorage.getItem('laben_orders') || '[]');
-let nextId = menuData.reduce((a, b) => Math.max(a, b.id), 0) + 1;
+let cart     = JSON.parse(localStorage.getItem('laben_cart')   || '[]');
+let orders   = JSON.parse(localStorage.getItem('laben_orders') || '[]');
+let nextId   = menuData.reduce((a, b) => Math.max(a, b.id), 0) + 1;
 let currentCat = 'all';
-let adminTab = 'orders';
-
-// UPI payment confirmed flag
+let adminTab   = 'orders';
 let upiPaymentConfirmed = false;
 
 function saveMenu()   { localStorage.setItem('laben_menu',   JSON.stringify(menuData)); }
-function saveCart()   { localStorage.setItem('laben_cart',   JSON.stringify(cart)); }
-function saveOrders() { localStorage.setItem('laben_orders', JSON.stringify(orders)); }
+function saveCart()   { localStorage.setItem('laben_cart',   JSON.stringify(cart));     }
+function saveOrders() { localStorage.setItem('laben_orders', JSON.stringify(orders));   }
 
 // ===== RENDER MENU =====
+function getItemImage(item) {
+  // 1. Try the exact item image path
+  if (ITEM_IMAGES[item.name]) {
+    return ITEM_IMAGES[item.name];
+  }
+  // 2. Fall back to category image
+  return CATEGORY_IMAGES[item.cat] || CATEGORY_IMAGES.pizza;
+}
+
 function renderMenu() {
-  const grid = document.getElementById('menu-grid');
+  const grid  = document.getElementById('menu-grid');
   const items = currentCat === 'all' ? menuData : menuData.filter(i => i.cat === currentCat);
+
   if (items.length === 0) {
-    grid.innerHTML = `<div class="col-12 text-center text-muted py-5"><i class="bi bi-search fs-2 d-block mb-2"></i>No items in this category.</div>`;
+    grid.innerHTML = `<div class="col-12 text-center text-muted py-5">
+      <i class="bi bi-search fs-2 d-block mb-2"></i>No items in this category.
+    </div>`;
     return;
   }
+
   grid.innerHTML = items.map(item => {
-    const img = ITEM_IMAGES[item.name] || CATEGORY_IMAGES[item.cat] || CATEGORY_IMAGES.pizza;
+    const imgSrc  = getItemImage(item);
+    const fallback = CATEGORY_IMAGES[item.cat] || CATEGORY_IMAGES.pizza;
     const catLabel = item.cat.charAt(0).toUpperCase() + item.cat.slice(1);
+
     return `
     <div class="col-6 col-md-4 col-lg-3 fade-in">
       <div class="menu-card">
         <div class="menu-card-img">
-          <img src="${img}" alt="${item.name}" loading="lazy" onerror="this.src='${CATEGORY_IMAGES[item.cat]}'">
+          <img
+            src="${imgSrc}"
+            alt="${item.name}"
+            loading="lazy"
+            onerror="this.onerror=null; this.src='${fallback}';"
+          >
           <span class="menu-card-cat">${catLabel}</span>
         </div>
         <div class="menu-card-body">
@@ -109,6 +126,7 @@ function renderMenu() {
       </div>
     </div>`;
   }).join('');
+
   observeFadeIn();
 }
 
@@ -160,14 +178,15 @@ function getCartTotal() {
 }
 
 function updateCartUI() {
-  // Badge
   const totalQty = cart.reduce((s, c) => s + c.qty, 0);
   document.getElementById('cart-count').textContent = totalQty;
 
-  // Cart panel list
   const list = document.getElementById('cart-items-list');
   if (cart.length === 0) {
-    list.innerHTML = `<div class="cart-empty"><i class="bi bi-bag-x"></i>Your cart is empty.<br><small class="text-muted">Add items from the menu!</small></div>`;
+    list.innerHTML = `<div class="cart-empty">
+      <i class="bi bi-bag-x"></i>Your cart is empty.<br>
+      <small class="text-muted">Add items from the menu!</small>
+    </div>`;
   } else {
     list.innerHTML = cart.map(c => `
       <div class="cart-item-row">
@@ -185,16 +204,22 @@ function updateCartUI() {
   }
   document.getElementById('cart-total').textContent = getCartTotal();
 
-  // Order summary box
   const summaryBox = document.getElementById('order-summary-box');
   if (cart.length === 0) {
     summaryBox.innerHTML = `<p class="mb-0 text-muted">Your cart is empty. Add items from the menu above.</p>`;
   } else {
     summaryBox.innerHTML = `
       <strong class="d-block mb-2"><i class="bi bi-bag me-1"></i>Order Summary</strong>
-      ${cart.map(c => `<div class="d-flex justify-content-between"><span>${c.name} × ${c.qty}</span><span>₹${c.price * c.qty}</span></div>`).join('')}
+      ${cart.map(c => `
+        <div class="d-flex justify-content-between">
+          <span>${c.name} × ${c.qty}</span>
+          <span>₹${c.price * c.qty}</span>
+        </div>`).join('')}
       <hr class="my-2">
-      <div class="d-flex justify-content-between fw-bold"><span>Total</span><span style="color:var(--accent)">₹${getCartTotal()}</span></div>`;
+      <div class="d-flex justify-content-between fw-bold">
+        <span>Total</span>
+        <span style="color:var(--accent)">₹${getCartTotal()}</span>
+      </div>`;
   }
 }
 
@@ -228,13 +253,9 @@ function placeOrder(e) {
 
   const payment = document.getElementById('ord-payment').value;
 
-  // Block UPI orders that haven't been confirmed via modal
   if (payment === 'UPI' && !upiPaymentConfirmed) {
     const amount = getCartTotal();
-    if (amount <= 0) {
-      alert('Your cart is empty! Please add items first.');
-      return;
-    }
+    if (amount <= 0) { alert('Your cart is empty!'); return; }
     openUpiModal(amount);
     return;
   }
@@ -245,22 +266,32 @@ function placeOrder(e) {
   const note    = document.getElementById('ord-note').value;
 
   const orderId = 'LBN' + Date.now().toString().slice(-6);
-  const now = new Date();
-  const timeStr = now.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
+  const now     = new Date();
+  const timeStr = now.toLocaleString('en-IN', {
+    day:'2-digit', month:'short', year:'numeric',
+    hour:'2-digit', minute:'2-digit', hour12:true
+  });
 
   const newOrder = {
-    id: orderId,
-    time: timeStr,
-    timestamp: Date.now(),
+    id: orderId, time: timeStr, timestamp: Date.now(),
     name, phone, address, payment,
     note: note || '',
     items: JSON.parse(JSON.stringify(cart)),
     total: getCartTotal(),
     status: 'new'
   };
+
   orders.unshift(newOrder);
   saveOrders();
 
+  showOrderConfirmation(orderId, name, phone, address, payment, note, getCartTotal());
+  upiPaymentConfirmed = false;
+  clearCart();
+  document.getElementById('orderForm').reset();
+  document.getElementById('upi-info-hint').style.display = 'none';
+}
+
+function showOrderConfirmation(orderId, name, phone, address, payment, note, total) {
   const conf = document.getElementById('order-confirmation');
   conf.style.display = 'block';
   conf.innerHTML = `
@@ -270,16 +301,10 @@ function placeOrder(e) {
       <span class="small">Order ID: <strong>${orderId}</strong></span><br>
       <span class="small">Name: ${name} | Phone: ${phone}</span><br>
       <span class="small">Delivery to: ${address}</span><br>
-      <span class="small">Payment: ${payment} | Total: <strong>₹${getCartTotal()}</strong></span>
+      <span class="small">Payment: ${payment} | Total: <strong>₹${total}</strong></span>
       ${note ? `<br><span class="small">Note: ${note}</span>` : ''}
       <br><span class="small text-success">We'll call you to confirm your order shortly. 🙏</span>
     </div>`;
-
-  // Reset state
-  upiPaymentConfirmed = false;
-  clearCart();
-  document.getElementById('orderForm').reset();
-  document.getElementById('upi-info-hint').style.display = 'none';
   conf.scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -288,8 +313,8 @@ function adminLogin() {
   const u = document.getElementById('adm-user').value;
   const p = document.getElementById('adm-pass').value;
   if (u === 'admin' && p === 'laben123') {
-    document.getElementById('admin-login-wrap').style.display = 'none';
-    document.getElementById('admin-dashboard').style.display = 'block';
+    document.getElementById('admin-login-wrap').style.display  = 'none';
+    document.getElementById('admin-dashboard').style.display   = 'block';
     switchAdminTab('orders');
   } else {
     document.getElementById('adm-err').style.display = 'block';
@@ -308,7 +333,7 @@ function switchAdminTab(tab) {
 
 function adminLogout() {
   document.getElementById('admin-login-wrap').style.display = 'block';
-  document.getElementById('admin-dashboard').style.display = 'none';
+  document.getElementById('admin-dashboard').style.display  = 'none';
   document.getElementById('adm-user').value = '';
   document.getElementById('adm-pass').value = '';
 }
@@ -336,7 +361,6 @@ function adminDeleteItem(id) {
   renderMenu();
 }
 
-// ===== FIXED: renderAdminList is now a proper function =====
 function renderAdminList() {
   document.getElementById('adm-count').textContent = menuData.length;
   const list = document.getElementById('adm-items-list');
@@ -346,7 +370,7 @@ function renderAdminList() {
         <div class="adm-item-name">${item.name}</div>
         <div class="adm-item-meta">
           <span class="cat-badge">${item.cat}</span>
-          ${item.desc ? `<span class="ms-1">${item.desc.slice(0, 35)}${item.desc.length > 35 ? '...' : ''}</span>` : ''}
+          ${item.desc ? `<span class="ms-1">${item.desc.slice(0,35)}${item.desc.length > 35 ? '...' : ''}</span>` : ''}
         </div>
       </div>
       <span class="adm-item-price">₹${item.price}</span>
@@ -357,29 +381,31 @@ function renderAdminList() {
 }
 
 function renderOrdersList() {
-  const wrap = document.getElementById('adm-orders-list');
-  const filterStatus = document.getElementById('adm-order-filter') ? document.getElementById('adm-order-filter').value : 'all';
-  const filtered = filterStatus === 'all' ? orders : orders.filter(o => o.status === filterStatus);
+  const wrap         = document.getElementById('adm-orders-list');
+  const filterEl     = document.getElementById('adm-order-filter');
+  const filterStatus = filterEl ? filterEl.value : 'all';
+  const filtered     = filterStatus === 'all' ? orders : orders.filter(o => o.status === filterStatus);
 
   document.getElementById('adm-orders-count').textContent = orders.length;
   const newCount = orders.filter(o => o.status === 'new').length;
-  const badge = document.getElementById('adm-new-badge');
-  badge.textContent = newCount;
+  const badge    = document.getElementById('adm-new-badge');
+  badge.textContent   = newCount;
   badge.style.display = newCount > 0 ? 'inline-block' : 'none';
 
-  // Stats row
-  const totalRevenue = orders.filter(o => o.status === 'delivered').reduce((s, o) => s + o.total, 0);
+  const totalRevenue = orders.filter(o => o.status === 'delivered').reduce((s,o) => s + o.total, 0);
   const statsEl = document.getElementById('adm-order-stats');
   if (statsEl) {
     statsEl.innerHTML = `
       <div class="adm-stat-pill"><i class="bi bi-receipt me-1"></i><strong>${orders.length}</strong> Total</div>
-      <div class="adm-stat-pill new-pill"><i class="bi bi-bell me-1"></i><strong>${orders.filter(o => o.status === 'new').length}</strong> New</div>
-      <div class="adm-stat-pill prep-pill"><i class="bi bi-fire me-1"></i><strong>${orders.filter(o => o.status === 'preparing').length}</strong> Preparing</div>
+      <div class="adm-stat-pill new-pill"><i class="bi bi-bell me-1"></i><strong>${orders.filter(o=>o.status==='new').length}</strong> New</div>
+      <div class="adm-stat-pill prep-pill"><i class="bi bi-fire me-1"></i><strong>${orders.filter(o=>o.status==='preparing').length}</strong> Preparing</div>
       <div class="adm-stat-pill done-pill"><i class="bi bi-check2-circle me-1"></i><strong>₹${totalRevenue}</strong> Earned</div>`;
   }
 
   if (filtered.length === 0) {
-    wrap.innerHTML = `<div style="text-align:center;padding:2.5rem 1rem;color:var(--muted);font-size:0.9rem;"><i class="bi bi-inbox" style="font-size:2.5rem;display:block;margin-bottom:0.75rem;opacity:0.4;"></i>No orders found.</div>`;
+    wrap.innerHTML = `<div style="text-align:center;padding:2.5rem 1rem;color:var(--muted);font-size:0.9rem;">
+      <i class="bi bi-inbox" style="font-size:2.5rem;display:block;margin-bottom:0.75rem;opacity:0.4;"></i>No orders found.
+    </div>`;
     return;
   }
 
@@ -389,7 +415,7 @@ function renderOrdersList() {
   const payIcons     = { COD:'💵', UPI:'📱', Card:'💳' };
 
   wrap.innerHTML = filtered.map(o => {
-    const itemsTotal = o.items.reduce((s, it) => s + (it.price * it.qty), 0);
+    const itemsTotal = o.items.reduce((s,it) => s + (it.price * it.qty), 0);
     return `
     <div class="adm-order-card" id="order-card-${o.id}" style="border-left:4px solid ${statusColors[o.status]}">
       <div class="adm-order-head">
@@ -404,10 +430,7 @@ function renderOrdersList() {
       <div class="adm-detail-section">
         <div class="adm-detail-label"><i class="bi bi-person-fill me-1"></i>Customer Details</div>
         <div class="adm-detail-grid">
-          <div class="adm-detail-row">
-            <span class="adm-detail-key">Name</span>
-            <span class="adm-detail-val"><strong>${o.name}</strong></span>
-          </div>
+          <div class="adm-detail-row"><span class="adm-detail-key">Name</span><span class="adm-detail-val"><strong>${o.name}</strong></span></div>
           <div class="adm-detail-row">
             <span class="adm-detail-key">Phone</span>
             <span class="adm-detail-val">
@@ -416,23 +439,14 @@ function renderOrdersList() {
               </a>
             </span>
           </div>
-          <div class="adm-detail-row">
-            <span class="adm-detail-key">Address</span>
-            <span class="adm-detail-val"><i class="bi bi-geo-alt-fill me-1" style="color:#e8500a"></i>${o.address}</span>
-          </div>
+          <div class="adm-detail-row"><span class="adm-detail-key">Address</span><span class="adm-detail-val"><i class="bi bi-geo-alt-fill me-1" style="color:#e8500a"></i>${o.address}</span></div>
         </div>
       </div>
       <div class="adm-detail-section">
         <div class="adm-detail-label"><i class="bi bi-credit-card-fill me-1"></i>Payment Details</div>
         <div class="adm-detail-grid">
-          <div class="adm-detail-row">
-            <span class="adm-detail-key">Method</span>
-            <span class="adm-detail-val"><span class="adm-pay-badge">${payIcons[o.payment] || '💰'} ${o.payment}</span></span>
-          </div>
-          <div class="adm-detail-row">
-            <span class="adm-detail-key">Amount</span>
-            <span class="adm-detail-val" style="font-size:1.1rem;font-weight:700;color:var(--accent)">₹${o.total}</span>
-          </div>
+          <div class="adm-detail-row"><span class="adm-detail-key">Method</span><span class="adm-detail-val"><span class="adm-pay-badge">${payIcons[o.payment]||'💰'} ${o.payment}</span></span></div>
+          <div class="adm-detail-row"><span class="adm-detail-key">Amount</span><span class="adm-detail-val" style="font-size:1.1rem;font-weight:700;color:var(--accent)">₹${o.total}</span></div>
         </div>
       </div>
       <div class="adm-detail-section">
@@ -487,7 +501,7 @@ function clearAllOrders() {
 
 // ===== SCROLL ANIMATIONS =====
 function observeFadeIn() {
-  const els = document.querySelectorAll('.fade-in');
+  const els      = document.querySelectorAll('.fade-in');
   const observer = new IntersectionObserver(entries => {
     entries.forEach((e, i) => {
       if (e.isIntersecting) {
@@ -499,30 +513,26 @@ function observeFadeIn() {
   els.forEach(el => observer.observe(el));
 }
 
-// ===== NAVBAR SCROLL EFFECT =====
+// ===== NAVBAR SCROLL =====
 window.addEventListener('scroll', () => {
   const nav = document.getElementById('mainNav');
   if (window.scrollY > 50) {
-    nav.style.background = 'rgba(26, 20, 16, 0.98)';
-    nav.style.boxShadow = '0 2px 20px rgba(0,0,0,0.3)';
+    nav.style.background  = 'rgba(26, 20, 16, 0.98)';
+    nav.style.boxShadow   = '0 2px 20px rgba(0,0,0,0.3)';
   } else {
-    nav.style.background = 'rgba(26, 20, 16, 0.95)';
-    nav.style.boxShadow = 'none';
+    nav.style.background  = 'rgba(26, 20, 16, 0.95)';
+    nav.style.boxShadow   = 'none';
   }
 });
 
-// ===== UPI FUNCTIONS (called from inline script in HTML) =====
-// These are defined here so placeOrder can set upiPaymentConfirmed
+// ===== UPI =====
 var UPI_ID   = "9665539828@ibl";
 var UPI_NAME = "The Laben Cafe";
 
 function handlePaymentChange() {
   var method = document.getElementById('ord-payment').value;
   document.getElementById('upi-info-hint').style.display = method === 'UPI' ? 'flex' : 'none';
-  // Reset UPI confirmed flag if user switches payment method
-  if (method !== 'UPI') {
-    upiPaymentConfirmed = false;
-  }
+  if (method !== 'UPI') upiPaymentConfirmed = false;
 }
 
 function copyUpiId() {
@@ -531,10 +541,10 @@ function copyUpiId() {
 
 function openUpiModal(amount) {
   document.getElementById('upi-display-amount').textContent = amount;
-  document.getElementById('upi-id-text').textContent = UPI_ID;
+  document.getElementById('upi-id-text').textContent        = UPI_ID;
   var upiLink = 'upi://pay?pa=' + UPI_ID + '&pn=' + encodeURIComponent(UPI_NAME) + '&am=' + amount + '&cu=INR&tn=The%20Laben%20Cafe%20Order';
-  document.getElementById('upi-deep-link').href = upiLink;
-  document.getElementById('upi-qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(upiLink);
+  document.getElementById('upi-deep-link').href   = upiLink;
+  document.getElementById('upi-qr-img').src       = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(upiLink);
   document.getElementById('upiModal').classList.add('active');
 }
 
@@ -544,10 +554,8 @@ function closeUpiModal() {
 
 function confirmUpiPayment() {
   closeUpiModal();
-  // Mark UPI as paid and auto-submit the form
   upiPaymentConfirmed = true;
 
-  // Validate form fields before placing order
   var name    = document.getElementById('ord-name').value.trim();
   var phone   = document.getElementById('ord-phone').value.trim();
   var address = document.getElementById('ord-address').value.trim();
@@ -558,24 +566,23 @@ function confirmUpiPayment() {
     return;
   }
 
-  // Now place the order directly
-  var payment = 'UPI';
   var note    = document.getElementById('ord-note').value;
-
   var orderId = 'LBN' + Date.now().toString().slice(-6);
   var now     = new Date();
-  var timeStr = now.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
+  var timeStr = now.toLocaleString('en-IN', {
+    day:'2-digit', month:'short', year:'numeric',
+    hour:'2-digit', minute:'2-digit', hour12:true
+  });
 
   var newOrder = {
-    id: orderId,
-    time: timeStr,
-    timestamp: Date.now(),
-    name: name, phone: phone, address: address, payment: payment,
+    id: orderId, time: timeStr, timestamp: Date.now(),
+    name, phone, address, payment: 'UPI',
     note: note || '',
     items: JSON.parse(JSON.stringify(cart)),
     total: getCartTotal(),
     status: 'new'
   };
+
   orders.unshift(newOrder);
   saveOrders();
 
