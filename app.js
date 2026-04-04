@@ -1,4 +1,4 @@
-// ===== CATEGORY IMAGES (fallbacks) ===== 
+// ===== CATEGORY IMAGES (fallbacks) =====
 const CATEGORY_IMAGES = {
   coffee:   'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=400&q=80',
   fries:    'https://images.unsplash.com/photo-1585325701956-60dd9c8553bc?w=400&q=80',
@@ -58,6 +58,9 @@ const DEFAULT_MENU = [
 
 const DEFAULT_CATEGORIES = ['coffee','fries','sandwich','pizza','burger','maggi'];
 
+// ===== FCM VAPID KEY =====
+const VAPID_KEY = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek';
+
 // ===== STATE =====
 let menuData   = JSON.parse(localStorage.getItem('laben_menu')       || 'null') || JSON.parse(JSON.stringify(DEFAULT_MENU));
 let categories = JSON.parse(localStorage.getItem('laben_categories') || 'null') || [...DEFAULT_CATEGORIES];
@@ -67,8 +70,9 @@ let nextId     = menuData.reduce((a, b) => Math.max(a, b.id), 0) + 1;
 let currentCat = 'all';
 let adminTab   = 'orders';
 let upiPaymentConfirmed = false;
-let firebaseDB = null;
-let firebaseOK = false;
+let firebaseDB  = null;
+let firebaseOK  = false;
+let fcmMessaging = null;
 let swRegistration = null;
 let seenOrderIds   = new Set(orders.map(o => o.id));
 
@@ -93,15 +97,14 @@ function showToast(msg, type) {
   setTimeout(() => { t.style.opacity='0'; setTimeout(()=>t.remove(),400); }, 3500);
 }
 
-// ===== SERVICE WORKER REGISTRATION =====
+// ===== SERVICE WORKER =====
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) { console.warn('SW not supported'); return null; }
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope:'/' });
+    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
     swRegistration = reg;
     console.log('✅ SW registered');
-
-    // When user taps notification → open admin panel
+    await navigator.serviceWorker.ready;
     navigator.serviceWorker.addEventListener('message', e => {
       if (e.data && e.data.type === 'OPEN_ADMIN') {
         const adminEl = document.getElementById('adminPanel');
@@ -109,13 +112,12 @@ async function registerServiceWorker() {
       }
     });
     return reg;
-  } catch(err) {
-    console.error('❌ SW failed:', err);
-    return null;
+  } catch (err) {
+    console.error('❌ SW failed:', err); return null;
   }
 }
 
-// ===== NOTIFICATIONS =====
+// ===== NOTIFICATIONS (FCM — WhatsApp style) =====
 async function requestNotificationPermission() {
   if (!('Notification' in window)) {
     showToast('❌ Not supported in this browser', 'error');
@@ -123,42 +125,58 @@ async function requestNotificationPermission() {
   }
   let perm = Notification.permission;
   if (perm === 'default') perm = await Notification.requestPermission();
-
-  if (perm === 'granted') {
-    showToast('🔔 Notifications ON! You will get alerts for new orders.', 'success');
-    if (!swRegistration) await registerServiceWorker();
-    updateNotifStatus(); return true;
-  } else {
-    showToast('❌ Denied. Enable notifications in your phone/browser settings.', 'error');
+  if (perm !== 'granted') {
+    showToast('❌ Denied. Enable in phone Settings → Browser → Notifications', 'error');
     updateNotifStatus(); return false;
   }
+  if (!swRegistration) await registerServiceWorker();
+  try {
+    if (typeof firebase !== 'undefined' && firebase.messaging) {
+      fcmMessaging = firebase.messaging();
+      const token = await fcmMessaging.getToken({
+        vapidKey: VAPID_KEY,
+        serviceWorkerRegistration: swRegistration
+      });
+      if (token) {
+        console.log('✅ FCM Token:', token);
+        if (firebaseOK && firebaseDB) {
+          await firebaseDB.ref('fcm_tokens/' + token.substring(0, 20)).set({
+            token:     token,
+            savedAt:   Date.now(),
+            userAgent: navigator.userAgent.substring(0, 100)
+          });
+        }
+        fcmMessaging.onMessage(payload => {
+          const data = payload.data || {};
+          showToast('🛎️ ' + (data.title || 'New Order!'), 'info');
+          renderOrdersList();
+        });
+        showToast('🔔 Notifications ON! You will get alerts even when phone is locked.', 'success');
+      } else {
+        showToast('⚠️ Could not get FCM token', 'warning');
+      }
+    }
+  } catch (err) {
+    console.error('❌ FCM error:', err);
+    showToast('❌ FCM error: ' + err.message, 'error');
+  }
+  updateNotifStatus(); return true;
 }
 
-// This sends a REAL mobile notification — shows on lock screen like WhatsApp
+// Fallback notification when tab is open
 function sendOrderNotification(order) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-
-  const title = '🛎️ New Order! #' + order.id;
-  const opts  = {
-    body:    '👤 ' + order.name + '\n💰 ₹' + order.total + ' via ' + order.payment + '\n📍 ' + order.address,
-    icon:    '/icon-192.png',
-    badge:   '/icon-72.png',
-    tag:     'laben-order-' + order.id,
-    vibrate: [300, 100, 300, 100, 300],
-    requireInteraction: true,
-    data:    { url:'/', orderId: order.id },
-    actions: [
-      { action:'open',    title:'👀 View Order' },
-      { action:'dismiss', title:'✕ Dismiss'     }
-    ]
-  };
-
-  // Use SW registration — this is the method that shows on home screen / lock screen
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'NEW_ORDER', order });
+    return;
+  }
   if (swRegistration) {
-    swRegistration.showNotification(title, opts);
-  } else {
-    // Fallback basic
-    try { new Notification(title, { body: opts.body }); } catch(e) {}
+    swRegistration.showNotification('🛎️ New Order #' + order.id, {
+      body:    '👤 ' + order.name + '\n💰 ₹' + order.total + ' via ' + order.payment,
+      icon:    '/icon-192.png',
+      vibrate: [300, 100, 300],
+      requireInteraction: true
+    });
   }
 }
 
@@ -167,30 +185,24 @@ function updateNotifStatus() {
   const btn = document.getElementById('notif-enable-btn');
   if (!el) return;
   if (!('Notification' in window)) {
-    el.innerHTML = '❌ Not supported in this browser';
-    el.style.color = '#dc2626';
+    el.innerHTML = '❌ Not supported in this browser'; el.style.color = '#dc2626';
     if (btn) btn.style.display = 'none';
   } else if (Notification.permission === 'granted') {
-    el.innerHTML = '✅ <strong>ON</strong> — Alerts will appear on your phone for every new order';
-    el.style.color = '#16a34a';
+    el.innerHTML = '✅ <strong>ON</strong> — Alerts even when phone is locked'; el.style.color = '#16a34a';
     if (btn) btn.style.display = 'none';
   } else if (Notification.permission === 'denied') {
-    el.innerHTML = '❌ <strong>Blocked</strong> — Go to Phone Settings → Browser → Notifications → Allow for this site';
-    el.style.color = '#dc2626';
+    el.innerHTML = '❌ <strong>Blocked</strong> — Go to Phone Settings → Browser → Notifications → Allow'; el.style.color = '#dc2626';
     if (btn) { btn.style.display=''; btn.textContent='⚙️ How to Enable'; }
   } else {
-    el.innerHTML = '🔔 Tap <strong>Enable</strong> to get order alerts on your phone like WhatsApp';
-    el.style.color = '#d97706';
+    el.innerHTML = '🔔 Tap <strong>Enable</strong> to get order alerts like WhatsApp'; el.style.color = '#d97706';
     if (btn) { btn.style.display=''; btn.textContent='🔔 Enable Notifications'; }
   }
 }
 
-// ===== FIREBASE INIT =====
+// ===== FIREBASE =====
 function initFirebase() {
   try {
-    if (typeof firebase === 'undefined') {
-      showToast('⚠️ Firebase SDK missing — check index.html', 'warning'); return;
-    }
+    if (typeof firebase === 'undefined') { showToast('⚠️ Firebase SDK missing', 'warning'); return; }
     const cfg = {
       apiKey:            "AIzaSyAQ_8cq9DWzXb5bgl2SpY5xI5TYKd-6dfA",
       authDomain:        "laben-cafe.firebaseapp.com",
@@ -204,29 +216,25 @@ function initFirebase() {
     firebaseDB = firebase.database();
     firebaseOK = true;
     console.log('✅ Firebase OK');
-    showToast('🔥 Firebase connected!', 'success');
 
-    // Real-time order listener
     firebaseDB.ref('orders').on('value', snapshot => {
       const data = snapshot.val();
       if (!data) return;
       const fbArr = Object.entries(data)
         .map(([k,v]) => ({...v, _fbKey:k}))
         .sort((a,b) => (b.timestamp||0)-(a.timestamp||0));
-
       let hasNew = false;
       fbArr.forEach(fbO => {
         const local = orders.find(o => o.id === fbO.id);
         if (!local) {
           orders.unshift(fbO);
           if (seenOrderIds.size > 0 && !seenOrderIds.has(fbO.id)) {
-            sendOrderNotification(fbO); // 🔔 REAL MOBILE NOTIFICATION
+            sendOrderNotification(fbO);
             hasNew = true;
           }
           seenOrderIds.add(fbO.id);
         } else { local.status=fbO.status; local._fbKey=fbO._fbKey; }
       });
-
       saveOrders();
       const dash = document.getElementById('admin-dashboard');
       if (dash && dash.style.display!=='none') renderOrdersList();
@@ -236,7 +244,6 @@ function initFirebase() {
       showToast('❌ Firebase error: '+err.message, 'error');
     });
 
-    // Category sync
     firebaseDB.ref('categories').on('value', snap => {
       const data = snap.val();
       if (data && Array.isArray(data)) {
@@ -394,14 +401,12 @@ function placeOrder(e) {
   if (cart.length===0) { alert('Your cart is empty! Please add some items first.'); return; }
   const payment = document.getElementById('ord-payment').value;
   if (payment==='UPI'&&!upiPaymentConfirmed) { openUpiModal(getCartTotal()); return; }
-
   const name    = document.getElementById('ord-name').value;
   const phone   = document.getElementById('ord-phone').value;
   const address = document.getElementById('ord-address').value;
   const note    = document.getElementById('ord-note').value;
   const orderId = 'LBN'+Date.now().toString().slice(-6);
   const timeStr = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
-
   const newOrder = {id:orderId,time:timeStr,timestamp:Date.now(),name,phone,address,payment,note:note||'',items:JSON.parse(JSON.stringify(cart)),total:getCartTotal(),status:'new'};
   orders.unshift(newOrder); seenOrderIds.add(orderId);
   saveOrders(); saveOrderToFirebase(newOrder);
@@ -598,22 +603,10 @@ function renderAdminList() {
       </div>
       <div id="adm-item-edit-${item.id}" style="display:none;width:100%;padding-top:10px;border-top:1px dashed #eee;margin-top:6px;">
         <div class="row g-2">
-          <div class="col-12">
-            <label class="form-label small fw-bold mb-1">Item Name</label>
-            <input type="text" id="adm-edit-name-${item.id}" class="form-control form-control-sm" value="${item.name}">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-1">Price (₹)</label>
-            <input type="number" id="adm-edit-price-${item.id}" class="form-control form-control-sm" value="${item.price}" min="1">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-1">Category</label>
-            <select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOptions.replace(`value="${item.cat}"`,`value="${item.cat}" selected`)}</select>
-          </div>
-          <div class="col-12">
-            <label class="form-label small fw-bold mb-1">Description</label>
-            <input type="text" id="adm-edit-desc-${item.id}" class="form-control form-control-sm" value="${item.desc}">
-          </div>
+          <div class="col-12"><label class="form-label small fw-bold mb-1">Item Name</label><input type="text" id="adm-edit-name-${item.id}" class="form-control form-control-sm" value="${item.name}"></div>
+          <div class="col-6"><label class="form-label small fw-bold mb-1">Price (₹)</label><input type="number" id="adm-edit-price-${item.id}" class="form-control form-control-sm" value="${item.price}" min="1"></div>
+          <div class="col-6"><label class="form-label small fw-bold mb-1">Category</label><select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOptions.replace(`value="${item.cat}"`,`value="${item.cat}" selected`)}</select></div>
+          <div class="col-12"><label class="form-label small fw-bold mb-1">Description</label><input type="text" id="adm-edit-desc-${item.id}" class="form-control form-control-sm" value="${item.desc}"></div>
           <div class="col-12 d-flex gap-2 mt-1">
             <button onclick="saveEditItem(${item.id})" class="btn btn-sm flex-fill" style="background:#e8500a;color:#fff;border:none;border-radius:8px;">💾 Save Changes</button>
             <button onclick="cancelEditItem(${item.id})" class="btn btn-sm flex-fill" style="background:#eee;border:none;border-radius:8px;">✕ Cancel</button>
@@ -759,7 +752,7 @@ function confirmUpiPayment(){
 }
 
 // ===== INIT =====
-registerServiceWorker(); // Start SW for mobile home screen notifications
+registerServiceWorker();
 refreshMenuTabs();
 renderMenu();
 updateCartUI();
