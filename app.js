@@ -13,7 +13,7 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🔑  PASTE YOUR VAPID KEY HERE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const FCM_VAPID_KEY = 'BO88gpkWJVEEGuurJS12tapPRQw0RwgFT9wcEyQSL4CMkgakil7Vc54nqKB7mOZrVL1Q-e9E_n48kuMWiEO1cFY';
+const FCM_VAPID_KEY = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek';
 
 // ── Firebase config ───────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
@@ -332,62 +332,88 @@ function saveCategoriesToFirebase() {
   firebaseDB.ref('categories').set(categories).catch(e => console.warn('Cat save:', e));
 }
 
+// ── Helper: promise that rejects after N ms (prevents infinite hangs) ────
+function _timeout(ms) {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+}
+
 // ── FCM / Notification subscription ──────────────────────────────────────
-//
-// BUG FIX: The original code hid the Enable button when firebaseMsg was null
-// (e.g. HTTP, file://, or unsupported browser). Now we always show the button
-// and fall back to plain Notification API permission when FCM isn't available.
-// This makes "Enable Notifications" work on any browser/context.
-//
 async function subscribeToPushNotifications() {
   const btn = document.getElementById('notif-enable-btn');
 
-  // ── Step 1: Browser supports Notification API at all? ──────────────────
+  // Always reset the button no matter what path exits
+  function resetBtn() {
+    if (!btn) return;
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-bell me-1"></i> Enable Notifications';
+    btn.onclick   = subscribeToPushNotifications;
+  }
+
+  // ── Step 1: Notification API supported? ───────────────────────────────
   if (!('Notification' in window)) {
     showToast('❌ This browser does not support notifications', 'error');
     updateNotifStatus();
     return false;
   }
 
-  // ── Step 2: Request permission ─────────────────────────────────────────
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Requesting…'; }
+  // ── Step 2: Show loading state ────────────────────────────────────────
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Requesting permission…'; }
+
+  // ── Step 3: Request permission with 15 s timeout so it never hangs ────
   let perm;
   try {
-    perm = await Notification.requestPermission();
+    perm = await Promise.race([
+      Notification.requestPermission(),
+      _timeout(15000)
+    ]);
   } catch(e) {
-    perm = 'denied';
+    // Timed out or API threw — read current value as fallback
+    perm = Notification.permission;
   }
 
   if (perm !== 'granted') {
-    showToast('❌ Notification permission denied. Allow in browser settings.', 'error');
-    if (btn) { btn.disabled = false; }
+    showToast('❌ Permission not granted. Tap the 🔒 icon in the address bar and allow notifications.', 'error');
+    resetBtn();
     updateNotifStatus();
     return false;
   }
 
-  // ── Step 3: Try FCM (full push — works when browser is closed) ──────────
+  // ── Step 4: Try FCM push (works when browser is closed) ───────────────
   if (firebaseMsg && FCM_VAPID_KEY && FCM_VAPID_KEY !== 'YOUR_VAPID_KEY_HERE') {
     try {
+      if (btn) btn.innerHTML = '⏳ Setting up push…';
+
+      // Get SW with a 5 s timeout — navigator.serviceWorker.ready hangs on HTTP
       let swReg = swRegistration;
       if (!swReg && 'serviceWorker' in navigator) {
-        try { swReg = await navigator.serviceWorker.ready; } catch(e) {}
+        try {
+          swReg = await Promise.race([
+            navigator.serviceWorker.ready,
+            _timeout(5000)
+          ]);
+        } catch(e) { swReg = null; }
       }
+
       const tokenOpts = { vapidKey: FCM_VAPID_KEY };
       if (swReg) tokenOpts.serviceWorkerRegistration = swReg;
 
-      const token = await firebaseMsg.getToken(tokenOpts);
+      const token = await Promise.race([
+        firebaseMsg.getToken(tokenOpts),
+        _timeout(10000)
+      ]);
+
       if (token) {
         fcmToken = token;
         if (firebaseOK && firebaseDB) {
-          await firebaseDB.ref('fcm_tokens/' + token.slice(-20)).set({
+          firebaseDB.ref('fcm_tokens/' + token.slice(-20)).set({
             token,
             device:    navigator.userAgent.slice(0, 100),
             timestamp: Date.now()
           }).catch(e => console.warn('Token save:', e));
         }
-        console.log('✅ FCM token saved:', token.slice(0, 20) + '…');
-        showToast('🔔 Push notifications enabled! Works even when browser is closed.', 'success');
-        if (btn) { btn.disabled = false; }
+        console.log('✅ FCM token:', token.slice(0, 20) + '…');
+        showToast('🔔 Push enabled! Alerts work even when browser is closed.', 'success');
+        resetBtn();
         updateNotifStatus();
         return true;
       }
@@ -396,19 +422,17 @@ async function subscribeToPushNotifications() {
     }
   }
 
-  // ── Step 4: Fallback — plain browser notification (works while page is open)
-  // This runs when FCM isn't available (HTTP, file://, unsupported browser, etc.)
-  showToast('✅ Notifications enabled! Alerts will show while this tab is open.', 'success');
-  // Send a test notification so admin knows it worked
+  // ── Step 5: Fallback — plain browser notification (while tab is open) ─
+  showToast('✅ Notifications enabled! You will get alerts while this tab is open.', 'success');
   try {
     showBrowserNotification(
       '✅ Notifications Active — The Laben Café',
-      'You will receive order alerts while this tab is open.',
+      'You will receive new order alerts while this tab is open.',
       ''
     );
   } catch(e) {}
 
-  if (btn) { btn.disabled = false; }
+  resetBtn();
   updateNotifStatus();
   return true;
 }
