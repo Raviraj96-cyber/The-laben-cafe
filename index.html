@@ -355,19 +355,22 @@
 
       <!-- Notification card -->
       <div class="notif-card">
-        <div class="notif-card-title"><i class="bi bi-bell-fill"></i> Background Order Notifications</div>
+        <div class="notif-card-title"><i class="bi bi-bell-fill"></i> Order Notifications</div>
         <div class="notif-status-text" id="notif-status-text" style="color:#d97706;">
-          🔔 Tap Enable to get order alerts even when browser is closed
+          🔔 Tap Enable to get order alerts
         </div>
-        <button class="notif-enable-btn" id="notif-enable-btn" onclick="subscribeToPushNotifications()">
+        <!-- Button is always shown; JS updates its label/state via updateNotifStatus() -->
+        <button class="notif-enable-btn" id="notif-enable-btn"
+          onclick="subscribeToPushNotifications()"
+          style="display:flex;">
           <i class="bi bi-bell"></i> Enable Notifications
         </button>
-        <div class="notif-setup-steps">
-          <strong>⚙️ One-time setup to enable background notifications:</strong><br>
-          1. <strong>Firebase Console</strong> → Project Settings → Cloud Messaging tab<br>
-          2. "Web Push certificates" → <strong>Generate key pair</strong> → copy the key<br>
-          3. Paste it as <strong>FCM_VAPID_KEY</strong> in <strong>app.js line 17</strong><br>
-          4. Click <strong>Enable</strong> above — alerts work even when screen is off 🔔
+        <div class="notif-setup-steps" style="margin-top:10px;">
+          <strong>⚙️ For full push (works when browser is closed):</strong><br>
+          1. <strong>Firebase Console</strong> → Project Settings → Cloud Messaging<br>
+          2. Web Push certificates → <strong>Generate key pair</strong> → copy it<br>
+          3. Paste as <strong>FCM_VAPID_KEY</strong> in <strong>app.js line 17</strong><br>
+          4. Host on <strong>HTTPS</strong>, then click Enable above 🔔
         </div>
       </div>
 
@@ -513,6 +516,16 @@
   document.getElementById('adminPanel').addEventListener('show.bs.offcanvas', () => {
     if (typeof updateNotifStatus === 'function') updateNotifStatus();
   });
+  // Also refresh when dashboard becomes visible after login
+  const _admDash = document.getElementById('admin-dashboard');
+  if (_admDash) {
+    const _dashObs = new MutationObserver(() => {
+      if (_admDash.style.display !== 'none' && typeof updateNotifStatus === 'function') {
+        updateNotifStatus();
+      }
+    });
+    _dashObs.observe(_admDash, { attributes: true, attributeFilter: ['style'] });
+  }
 
   // Navbar scroll
   window.addEventListener('scroll', function() {
