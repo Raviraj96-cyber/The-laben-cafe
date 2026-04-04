@@ -1,7 +1,7 @@
-// ===== MENU DATA =====
+// ===== CATEGORY IMAGES (fallbacks) =====
 const CATEGORY_IMAGES = {
   coffee:   'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=400&q=80',
-  fries:    'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80',
+  fries:    'https://images.unsplash.com/photo-1585325701956-60dd9c8553bc?w=400&q=80',
   sandwich: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&q=80',
   pizza:    'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&q=80',
   burger:   'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80',
@@ -56,20 +56,27 @@ const DEFAULT_MENU = [
   { id:21, name:'Cheese Chilli Maggi',                desc:'Spicy chilli and melted cheese Maggi',             price:100, cat:'maggi'    },
 ];
 
+// ===== DEFAULT CATEGORIES =====
+const DEFAULT_CATEGORIES = ['coffee','fries','sandwich','pizza','burger','maggi'];
+
 // ===== STATE =====
-let menuData   = JSON.parse(localStorage.getItem('laben_menu')   || 'null') || JSON.parse(JSON.stringify(DEFAULT_MENU));
-let cart       = JSON.parse(localStorage.getItem('laben_cart')   || '[]');
-let orders     = JSON.parse(localStorage.getItem('laben_orders') || '[]');
+let menuData   = JSON.parse(localStorage.getItem('laben_menu')       || 'null') || JSON.parse(JSON.stringify(DEFAULT_MENU));
+let categories = JSON.parse(localStorage.getItem('laben_categories') || 'null') || [...DEFAULT_CATEGORIES];
+let cart       = JSON.parse(localStorage.getItem('laben_cart')       || '[]');
+let orders     = JSON.parse(localStorage.getItem('laben_orders')     || '[]');
 let nextId     = menuData.reduce((a, b) => Math.max(a, b.id), 0) + 1;
 let currentCat = 'all';
 let adminTab   = 'orders';
 let upiPaymentConfirmed = false;
 let firebaseDB = null;
 let firebaseOK = false;
+let notifPermission = false;
+let seenOrderIds   = new Set(orders.map(o => o.id));
 
-function saveMenu()   { localStorage.setItem('laben_menu',   JSON.stringify(menuData)); }
-function saveCart()   { localStorage.setItem('laben_cart',   JSON.stringify(cart));     }
-function saveOrders() { localStorage.setItem('laben_orders', JSON.stringify(orders));   }
+function saveMenu()       { localStorage.setItem('laben_menu',       JSON.stringify(menuData));   }
+function saveCategories() { localStorage.setItem('laben_categories', JSON.stringify(categories)); }
+function saveCart()       { localStorage.setItem('laben_cart',       JSON.stringify(cart));       }
+function saveOrders()     { localStorage.setItem('laben_orders',     JSON.stringify(orders));     }
 
 // ===== TOAST =====
 function showToast(msg, type) {
@@ -87,7 +94,30 @@ function showToast(msg, type) {
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 3500);
 }
 
-// ===== FIREBASE INIT (uses compat SDK loaded via <script> in index.html) =====
+// ===== NOTIFICATIONS =====
+function requestNotificationPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') { notifPermission = true; return; }
+  if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(p => {
+      notifPermission = p === 'granted';
+      if (notifPermission) showToast('🔔 Notifications enabled!', 'success');
+    });
+  }
+}
+
+function sendOrderNotification(order) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    new Notification('🛎️ New Order! — #' + order.id, {
+      body: '👤 ' + order.name + '\n📱 ' + order.phone + '\n💰 ₹' + order.total + ' via ' + order.payment,
+      icon: '',
+      tag: order.id,
+    });
+  } catch(e) { console.warn('Notification failed:', e); }
+}
+
+// ===== FIREBASE INIT =====
 function initFirebase() {
   try {
     if (typeof firebase === 'undefined') {
@@ -95,7 +125,6 @@ function initFirebase() {
       showToast('⚠️ Firebase SDK missing — check index.html script tags', 'warning');
       return;
     }
-
     const cfg = {
       apiKey:            "AIzaSyAQ_8cq9DWzXb5bgl2SpY5xI5TYKd-6dfA",
       authDomain:        "laben-cafe.firebaseapp.com",
@@ -105,14 +134,13 @@ function initFirebase() {
       messagingSenderId: "236045385314",
       appId:             "1:236045385314:web:a363accd4d0b9f0fe35b3b"
     };
-
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     firebaseDB = firebase.database();
     firebaseOK = true;
     console.log('✅ Firebase initialized');
     showToast('🔥 Firebase connected!', 'success');
 
-    // Realtime sync of orders
+    // Realtime sync orders
     firebaseDB.ref('orders').on('value', snapshot => {
       const data = snapshot.val();
       if (data) {
@@ -120,20 +148,41 @@ function initFirebase() {
           .map(([k, v]) => ({ ...v, _fbKey: k }))
           .sort((a, b) => (b.timestamp||0) - (a.timestamp||0));
 
+        let hasNew = false;
         fbArr.forEach(fbO => {
           const local = orders.find(o => o.id === fbO.id);
-          if (!local) orders.unshift(fbO);
-          else { local.status = fbO.status; local._fbKey = fbO._fbKey; }
+          if (!local) {
+            orders.unshift(fbO);
+            // Notify only if it's genuinely new (not first load)
+            if (seenOrderIds.size > 0 && !seenOrderIds.has(fbO.id)) {
+              sendOrderNotification(fbO);
+              hasNew = true;
+            }
+            seenOrderIds.add(fbO.id);
+          } else {
+            local.status = fbO.status;
+            local._fbKey = fbO._fbKey;
+          }
         });
         saveOrders();
-
         const dash = document.getElementById('admin-dashboard');
         if (dash && dash.style.display !== 'none') renderOrdersList();
-        console.log('✅ Firebase orders synced:', fbArr.length);
+        if (hasNew) showToast('🛎️ New order received!', 'info');
       }
     }, err => {
       console.error('❌ Firebase read error:', err.code, err.message);
       showToast('❌ Firebase error: ' + err.message, 'error');
+    });
+
+    // Sync categories from Firebase
+    firebaseDB.ref('categories').on('value', snap => {
+      const data = snap.val();
+      if (data && Array.isArray(data)) {
+        categories = data;
+        saveCategories();
+        refreshMenuTabs();
+        refreshAdminCatDropdown();
+      }
     });
 
   } catch(e) {
@@ -143,13 +192,36 @@ function initFirebase() {
 }
 
 function saveOrderToFirebase(order) {
-  if (!firebaseOK || !firebaseDB) {
-    console.warn('⚠️ Firebase not ready — order saved locally');
-    return;
-  }
+  if (!firebaseOK || !firebaseDB) { console.warn('⚠️ Firebase not ready — saved locally'); return; }
   firebaseDB.ref('orders').push(order)
     .then(() => { console.log('✅ Saved to Firebase:', order.id); showToast('✅ Order sent to cloud!', 'success'); })
-    .catch(err => { console.error('❌ Firebase write failed:', err.code, err.message); showToast('❌ Firebase write failed — check DB rules!', 'error'); });
+    .catch(err => { console.error('❌ Firebase write failed:', err); showToast('❌ Firebase write failed — check DB rules!', 'error'); });
+}
+
+function saveCategoriesToFirebase() {
+  if (!firebaseOK || !firebaseDB) return;
+  firebaseDB.ref('categories').set(categories).catch(err => console.warn('Firebase cat save error:', err));
+}
+
+// ===== MENU TABS =====
+function refreshMenuTabs() {
+  const tabsEl = document.getElementById('menuTabs');
+  if (!tabsEl) return;
+  const allCats = ['all', ...categories];
+  tabsEl.innerHTML = allCats.map(cat => {
+    const label = cat === 'all' ? 'All Items' : cat.charAt(0).toUpperCase() + cat.slice(1);
+    const icons = { coffee:'☕', fries:'🍟', sandwich:'🥪', pizza:'🍕', burger:'🍔', maggi:'🍜' };
+    const icon  = icons[cat] ? icons[cat] + ' ' : '';
+    return `<li class="nav-item"><button class="menu-tab${cat === currentCat ? ' active' : ''}" data-cat="${cat}">${icon}${label}</button></li>`;
+  }).join('');
+  tabsEl.querySelectorAll('.menu-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabsEl.querySelectorAll('.menu-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentCat = btn.dataset.cat;
+      renderMenu();
+    });
+  });
 }
 
 // ===== RENDER MENU =====
@@ -188,15 +260,6 @@ function renderMenu() {
   }).join('');
   observeFadeIn();
 }
-
-document.querySelectorAll('.menu-tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.menu-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentCat = btn.dataset.cat;
-    renderMenu();
-  });
-});
 
 // ===== CART =====
 function addToCart(itemId) {
@@ -283,6 +346,7 @@ function placeOrder(e) {
 
   const newOrder = { id:orderId, time:timeStr, timestamp:Date.now(), name, phone, address, payment, note:note||'', items:JSON.parse(JSON.stringify(cart)), total:getCartTotal(), status:'new' };
   orders.unshift(newOrder);
+  seenOrderIds.add(orderId);
   saveOrders();
   saveOrderToFirebase(newOrder);
   showOrderConfirmation(orderId, name, phone, address, payment, note, getCartTotal());
@@ -310,27 +374,18 @@ function showOrderConfirmation(orderId, name, phone, address, payment, note, tot
   conf.scrollIntoView({ behavior: 'smooth' });
 }
 
-// ===== ADMIN =====
+// ===== ADMIN LOGIN =====
 function adminLogin() {
   const u = document.getElementById('adm-user').value;
   const p = document.getElementById('adm-pass').value;
   if (u === 'admin' && p === 'laben123') {
     document.getElementById('admin-login-wrap').style.display = 'none';
     document.getElementById('admin-dashboard').style.display  = 'block';
+    requestNotificationPermission();
     switchAdminTab('orders');
   } else {
     document.getElementById('adm-err').style.display = 'block';
   }
-}
-
-function switchAdminTab(tab) {
-  adminTab = tab;
-  document.querySelectorAll('.adm-tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('adm-tab-' + tab).classList.add('active');
-  document.getElementById('adm-panel-orders').style.display = tab === 'orders' ? 'block' : 'none';
-  document.getElementById('adm-panel-menu').style.display   = tab === 'menu'   ? 'block' : 'none';
-  if (tab === 'orders') renderOrdersList();
-  if (tab === 'menu')   renderAdminList();
 }
 
 function adminLogout() {
@@ -340,41 +395,240 @@ function adminLogout() {
   document.getElementById('adm-pass').value = '';
 }
 
+function switchAdminTab(tab) {
+  adminTab = tab;
+  document.querySelectorAll('.adm-tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('adm-tab-' + tab).classList.add('active');
+  document.getElementById('adm-panel-orders').style.display   = tab === 'orders'     ? 'block' : 'none';
+  document.getElementById('adm-panel-menu').style.display     = tab === 'menu'       ? 'block' : 'none';
+  document.getElementById('adm-panel-catmgr').style.display   = tab === 'catmgr'     ? 'block' : 'none';
+  if (tab === 'orders')  renderOrdersList();
+  if (tab === 'menu')    renderAdminList();
+  if (tab === 'catmgr')  renderCategoryManager();
+}
+
+// ===== CATEGORY MANAGER =====
+function refreshAdminCatDropdown() {
+  const sel = document.getElementById('adm-cat');
+  if (!sel) return;
+  sel.innerHTML = categories.map(c =>
+    `<option value="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</option>`
+  ).join('');
+}
+
+function renderCategoryManager() {
+  const wrap = document.getElementById('adm-cat-list');
+  if (!wrap) return;
+  if (categories.length === 0) {
+    wrap.innerHTML = `<p class="text-muted small text-center py-3">No categories yet.</p>`;
+    return;
+  }
+  wrap.innerHTML = categories.map(cat => {
+    const count = menuData.filter(i => i.cat === cat).length;
+    return `
+    <div class="adm-cat-row" id="cat-row-${cat}">
+      <div style="display:flex;align-items:center;gap:8px;flex:1;">
+        <span id="cat-label-${cat}" style="font-weight:600;text-transform:capitalize;">${cat}</span>
+        <span class="cat-badge">${count} item${count!==1?'s':''}</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button onclick="startRenomeCat('${cat}')" class="adm-edit-btn" title="Rename"><i class="bi bi-pencil-fill"></i> Rename</button>
+        <button onclick="deleteCategory('${cat}')" class="adm-del-btn" title="Delete"><i class="bi bi-trash3-fill"></i></button>
+      </div>
+    </div>
+    <div id="cat-rename-${cat}" style="display:none;padding:8px 0;border-top:1px solid #f0f0f0;">
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input type="text" id="cat-rename-input-${cat}" value="${cat}" class="form-control form-control-sm" style="max-width:200px;" placeholder="New category name">
+        <button onclick="saveCategoryRename('${cat}')" class="btn btn-sm" style="background:#e8500a;color:#fff;border:none;border-radius:8px;padding:4px 12px;font-size:12px;">Save</button>
+        <button onclick="cancelCatRename('${cat}')" class="btn btn-sm" style="background:#eee;border:none;border-radius:8px;padding:4px 10px;font-size:12px;">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function startRenomeCat(cat) {
+  document.getElementById('cat-rename-' + cat).style.display = 'block';
+  document.getElementById('cat-rename-input-' + cat).focus();
+}
+
+function cancelCatRename(cat) {
+  document.getElementById('cat-rename-' + cat).style.display = 'none';
+}
+
+function saveCategoryRename(oldCat) {
+  const input   = document.getElementById('cat-rename-input-' + oldCat);
+  const newCat  = input.value.trim().toLowerCase().replace(/\s+/g,'');
+  if (!newCat) { showToast('Enter a valid name', 'error'); return; }
+  if (newCat === oldCat) { cancelCatRename(oldCat); return; }
+  if (categories.includes(newCat)) { showToast('Category already exists!', 'warning'); return; }
+
+  // Update categories
+  const idx = categories.indexOf(oldCat);
+  if (idx !== -1) categories[idx] = newCat;
+
+  // Update all menu items with old category
+  menuData.forEach(item => { if (item.cat === oldCat) item.cat = newCat; });
+
+  saveMenu();
+  saveCategories();
+  saveCategoriesToFirebase();
+  refreshMenuTabs();
+  refreshAdminCatDropdown();
+  renderCategoryManager();
+  renderMenu();
+  showToast('Category renamed to "' + newCat + '"', 'success');
+}
+
+function addCategory() {
+  const input  = document.getElementById('adm-new-cat-input');
+  const newCat = input.value.trim().toLowerCase().replace(/\s+/g,'');
+  if (!newCat) { showToast('Enter a category name', 'error'); return; }
+  if (categories.includes(newCat)) { showToast('Category already exists!', 'warning'); return; }
+  categories.push(newCat);
+  saveCategories();
+  saveCategoriesToFirebase();
+  refreshMenuTabs();
+  refreshAdminCatDropdown();
+  renderCategoryManager();
+  input.value = '';
+  showToast('Category "' + newCat + '" added!', 'success');
+}
+
+function deleteCategory(cat) {
+  const count = menuData.filter(i => i.cat === cat).length;
+  const msg   = count > 0
+    ? `Delete category "${cat}"? It has ${count} item(s). Those items will also be removed!`
+    : `Delete category "${cat}"?`;
+  if (!confirm(msg)) return;
+
+  categories = categories.filter(c => c !== cat);
+  if (count > 0) menuData = menuData.filter(i => i.cat !== cat);
+
+  saveMenu();
+  saveCategories();
+  saveCategoriesToFirebase();
+  refreshMenuTabs();
+  refreshAdminCatDropdown();
+  renderCategoryManager();
+  renderAdminList();
+  renderMenu();
+  showToast('Category deleted!', 'success');
+}
+
+// ===== ADMIN MENU ITEM MANAGEMENT =====
 function adminAddItem() {
   const name  = document.getElementById('adm-name').value.trim();
   const price = parseFloat(document.getElementById('adm-price').value);
   const desc  = document.getElementById('adm-desc').value.trim();
   const cat   = document.getElementById('adm-cat').value;
   if (!name || !price) { alert('Please enter item name and price.'); return; }
+  if (!cat) { alert('Please select a category.'); return; }
   menuData.push({ id: nextId++, name, desc: desc||'', price, cat });
   saveMenu(); renderAdminList(); renderMenu();
   document.getElementById('adm-name').value  = '';
   document.getElementById('adm-price').value = '';
   document.getElementById('adm-desc').value  = '';
+  showToast('Item "' + name + '" added!', 'success');
 }
 
 function adminDeleteItem(id) {
   if (!confirm('Remove this item from the menu?')) return;
   menuData = menuData.filter(i => i.id !== id);
   saveMenu(); renderAdminList(); renderMenu();
+  showToast('Item removed', 'success');
+}
+
+// ===== EDIT ITEM NAME / PRICE / DESC =====
+function startEditItem(id) {
+  document.getElementById('adm-item-display-' + id).style.display = 'none';
+  document.getElementById('adm-item-edit-'    + id).style.display = 'block';
+}
+
+function cancelEditItem(id) {
+  document.getElementById('adm-item-display-' + id).style.display = 'flex';
+  document.getElementById('adm-item-edit-'    + id).style.display = 'none';
+}
+
+function saveEditItem(id) {
+  const nameVal  = document.getElementById('adm-edit-name-'  + id).value.trim();
+  const priceVal = parseFloat(document.getElementById('adm-edit-price-' + id).value);
+  const descVal  = document.getElementById('adm-edit-desc-'  + id).value.trim();
+  const catVal   = document.getElementById('adm-edit-cat-'   + id).value;
+
+  if (!nameVal)        { showToast('Name cannot be empty', 'error');     return; }
+  if (!priceVal || priceVal < 1) { showToast('Enter a valid price', 'error'); return; }
+
+  const item = menuData.find(i => i.id === id);
+  if (!item) return;
+
+  item.name  = nameVal;
+  item.price = priceVal;
+  item.desc  = descVal;
+  item.cat   = catVal;
+
+  saveMenu();
+  renderAdminList();
+  renderMenu();
+  showToast('Item updated!', 'success');
+
+  if (firebaseOK && firebaseDB) {
+    firebaseDB.ref('menu/' + id).set(item).catch(err => console.warn('Firebase menu update:', err));
+  }
 }
 
 function renderAdminList() {
   document.getElementById('adm-count').textContent = menuData.length;
+  const catOptions = categories.map(c =>
+    `<option value="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</option>`
+  ).join('');
+
   document.getElementById('adm-items-list').innerHTML = menuData.map(item => `
-    <div class="adm-item">
-      <div class="adm-item-info">
-        <div class="adm-item-name">${item.name}</div>
-        <div class="adm-item-meta">
-          <span class="cat-badge">${item.cat}</span>
-          ${item.desc ? `<span class="ms-1">${item.desc.slice(0,35)}${item.desc.length>35?'...':''}</span>` : ''}
+    <div class="adm-item" id="adm-item-wrap-${item.id}">
+
+      <!-- DISPLAY ROW -->
+      <div id="adm-item-display-${item.id}" style="display:flex;align-items:center;gap:8px;width:100%;">
+        <div class="adm-item-info" style="flex:1;">
+          <div class="adm-item-name">${item.name}</div>
+          <div class="adm-item-meta">
+            <span class="cat-badge">${item.cat}</span>
+            ${item.desc ? `<span class="ms-1 small text-muted">${item.desc.slice(0,35)}${item.desc.length>35?'...':''}</span>` : ''}
+          </div>
+        </div>
+        <span class="adm-item-price">₹${item.price}</span>
+        <button onclick="startEditItem(${item.id})" class="adm-edit-btn" title="Edit"><i class="bi bi-pencil-fill"></i></button>
+        <button onclick="adminDeleteItem(${item.id})" class="adm-del-btn" title="Delete"><i class="bi bi-trash3-fill"></i></button>
+      </div>
+
+      <!-- EDIT FORM -->
+      <div id="adm-item-edit-${item.id}" style="display:none;width:100%;padding-top:10px;border-top:1px dashed #eee;margin-top:6px;">
+        <div class="row g-2">
+          <div class="col-12">
+            <label class="form-label small fw-bold mb-1">Item Name</label>
+            <input type="text" id="adm-edit-name-${item.id}" class="form-control form-control-sm" value="${item.name}" placeholder="Item name">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-bold mb-1">Price (₹)</label>
+            <input type="number" id="adm-edit-price-${item.id}" class="form-control form-control-sm" value="${item.price}" min="1">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-bold mb-1">Category</label>
+            <select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOptions.replace(`value="${item.cat}"`, `value="${item.cat}" selected`)}</select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-bold mb-1">Description</label>
+            <input type="text" id="adm-edit-desc-${item.id}" class="form-control form-control-sm" value="${item.desc}" placeholder="Short description">
+          </div>
+          <div class="col-12 d-flex gap-2 mt-1">
+            <button onclick="saveEditItem(${item.id})" class="btn btn-sm flex-fill" style="background:#e8500a;color:#fff;border:none;border-radius:8px;">💾 Save Changes</button>
+            <button onclick="cancelEditItem(${item.id})" class="btn btn-sm flex-fill" style="background:#eee;border:none;border-radius:8px;">✕ Cancel</button>
+          </div>
         </div>
       </div>
-      <span class="adm-item-price">₹${item.price}</span>
-      <button class="adm-del-btn" onclick="adminDeleteItem(${item.id})" title="Delete"><i class="bi bi-trash3-fill"></i></button>
+
     </div>`).join('');
 }
 
+// ===== ORDER MANAGEMENT =====
 function renderOrdersList() {
   const wrap     = document.getElementById('adm-orders-list');
   const filter   = (document.getElementById('adm-order-filter')||{}).value || 'all';
@@ -382,7 +636,7 @@ function renderOrdersList() {
 
   document.getElementById('adm-orders-count').textContent = orders.length;
   const newCount = orders.filter(o => o.status === 'new').length;
-  const badge = document.getElementById('adm-new-badge');
+  const badge    = document.getElementById('adm-new-badge');
   badge.textContent   = newCount;
   badge.style.display = newCount > 0 ? 'inline-block' : 'none';
 
@@ -543,7 +797,7 @@ function confirmUpiPayment() {
       utrInput.style.boxShadow   = '0 0 0 3px rgba(220,38,38,.15)';
       setTimeout(() => { utrInput.style.borderColor = ''; utrInput.style.boxShadow = ''; }, 2500);
     }
-    return; // ❌ BLOCKED
+    return;
   }
 
   var name    = document.getElementById('ord-name').value.trim();
@@ -562,6 +816,7 @@ function confirmUpiPayment() {
 
   var newOrder = { id:orderId, time:timeStr, timestamp:Date.now(), name, phone, address, payment:'UPI', utrId:utrValue, note:note||'', items:JSON.parse(JSON.stringify(cart)), total:getCartTotal(), status:'new' };
   orders.unshift(newOrder);
+  seenOrderIds.add(orderId);
   saveOrders();
   saveOrderToFirebase(newOrder);
 
@@ -572,7 +827,9 @@ function confirmUpiPayment() {
 }
 
 // ===== INIT =====
+refreshMenuTabs();
 renderMenu();
 updateCartUI();
+refreshAdminCatDropdown();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initFirebase);
 else initFirebase();
