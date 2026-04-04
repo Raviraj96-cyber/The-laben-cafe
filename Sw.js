@@ -1,10 +1,6 @@
 // =====================================================
-// FIREBASE MESSAGING SERVICE WORKER
-// This file makes notifications arrive even when:
-// - Browser is closed
-// - Phone screen is off
-// - Website tab is closed
-// Exactly like WhatsApp / Instagram notifications
+// FIREBASE MESSAGING SERVICE WORKER — The Laben Café
+// Handles background push notifications (app closed / screen off)
 // =====================================================
 
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
@@ -22,49 +18,56 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Handle background messages (when app is closed/browser not open)
+// ── Background messages (tab closed / browser minimised) ──────────────────
 messaging.onBackgroundMessage(function(payload) {
-  console.log('Background message received:', payload);
+  console.log('[SW] Background message:', payload);
 
-  const data  = payload.data || {};
-  const title = data.title || '🛎️ New Order! — The Laben Café';
-  const body  = data.body  || 'A new order just arrived!';
+  const data  = payload.data  || {};
+  const notif = payload.notification || {};
 
-  const options = {
-    body:    body,
+  const title   = data.title || notif.title || '🛎️ New Order! — The Laben Café';
+  const body    = data.body  || notif.body  || 'A new order just arrived!';
+  const orderId = data.orderId || '';
+
+  return self.registration.showNotification(title, {
+    body,
     icon:    '/icon-192.png',
     badge:   '/icon-72.png',
-    tag:     data.orderId ? 'order-' + data.orderId : 'laben-order',
+    tag:     orderId ? 'order-' + orderId : 'laben-new-order',
+    renotify: true,
     vibrate: [300, 100, 300, 100, 300],
     requireInteraction: true,
-    data:    { url: '/?openAdmin=1', orderId: data.orderId || '' },
+    data:    { url: '/?openAdmin=1', orderId },
     actions: [
       { action: 'open',    title: '👀 View Order' },
-      { action: 'dismiss', title: '✕ Dismiss'     }
+      { action: 'dismiss', title: '✕ Dismiss'    }
     ]
-  };
-
-  return self.registration.showNotification(title, options);
+  });
 });
 
-// Notification click handler
+// ── Notification click ────────────────────────────────────────────────────
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
   if (event.action === 'dismiss') return;
 
-  const url = (event.notification.data && event.notification.data.url)
-    ? event.notification.data.url : '/?openAdmin=1';
+  const targetUrl = (event.notification.data && event.notification.data.url)
+    ? event.notification.data.url
+    : '/?openAdmin=1';
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      for (var i = 0; i < clientList.length; i++) {
-        var client = clientList[i];
-        if ('focus' in client) {
-          client.postMessage({ type: 'OPEN_ADMIN' });
-          return client.focus();
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
+      for (let i = 0; i < list.length; i++) {
+        const c = list[i];
+        if ('focus' in c) {
+          c.postMessage({ type: 'OPEN_ADMIN' });
+          return c.focus();
         }
       }
-      if (clients.openWindow) return clients.openWindow(url);
+      return clients.openWindow(targetUrl);
     })
   );
 });
+
+// ── SW lifecycle — activate immediately so new SW takes over right away ───
+self.addEventListener('install',  () => self.skipWaiting());
+self.addEventListener('activate', e  => e.waitUntil(clients.claim()));
