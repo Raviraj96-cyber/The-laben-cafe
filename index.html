@@ -10,9 +10,60 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="style.css">
 
-  <!-- ✅ Firebase COMPAT SDK — must be in <head> BEFORE app.js -->
+  <!-- Firebase COMPAT SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+  <style>
+    /* ===== ADMIN EDIT BUTTON ===== */
+    .adm-edit-btn {
+      background: none;
+      border: 1px solid #e8500a44;
+      color: #e8500a;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .2s;
+      white-space: nowrap;
+    }
+    .adm-edit-btn:hover { background: #fff4f0; }
+
+    /* ===== CATEGORY MANAGER ===== */
+    .adm-cat-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #f5f5f5;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .adm-cat-row:last-child { border-bottom: none; }
+
+    /* ===== NOTIFICATION BELL ===== */
+    .notif-bell-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #fff8f5;
+      border: 1px solid #f5d5c8;
+      border-radius: 12px;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .notif-bell-wrap i { color: #e8500a; font-size: 18px; }
+    .notif-status-on  { color: #16a34a; font-weight: 600; }
+    .notif-status-off { color: #888;    font-weight: 600; }
+
+    /* ===== ADMIN ITEM WRAP ===== */
+    .adm-item {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 0 !important;
+    }
+  </style>
 </head>
 <body>
 
@@ -89,15 +140,8 @@
       <h2 class="section-title">Our <span class="text-accent">Menu</span></h2>
       <p class="section-sub">Fresh, delicious, made with love — every single time.</p>
     </div>
-    <ul class="nav menu-tabs justify-content-center flex-wrap mb-5 reveal" id="menuTabs">
-      <li class="nav-item"><button class="menu-tab active" data-cat="all">All Items</button></li>
-      <li class="nav-item"><button class="menu-tab" data-cat="coffee"><i class="bi bi-cup-hot-fill me-1"></i>Coffee</button></li>
-      <li class="nav-item"><button class="menu-tab" data-cat="fries"><i class="bi bi-stars me-1"></i>Fries</button></li>
-      <li class="nav-item"><button class="menu-tab" data-cat="sandwich">Sandwich</button></li>
-      <li class="nav-item"><button class="menu-tab" data-cat="pizza"><i class="bi bi-circle me-1"></i>Pizza</button></li>
-      <li class="nav-item"><button class="menu-tab" data-cat="burger">Burger</button></li>
-      <li class="nav-item"><button class="menu-tab" data-cat="maggi">Maggi</button></li>
-    </ul>
+    <!-- Tabs are dynamically rendered by JS -->
+    <ul class="nav menu-tabs justify-content-center flex-wrap mb-5 reveal" id="menuTabs"></ul>
     <div class="row g-4" id="menu-grid"></div>
   </div>
 </section>
@@ -192,8 +236,8 @@
       <div class="col-lg-6 reveal-left">
         <p class="section-eyebrow">Who We Are</p>
         <h2 class="section-title mb-4">About <span class="text-accent">The Laben Café</span></h2>
-        <p class="text-muted mb-3">Welcome to The Laben Café — your neighbourhood spot for great food, cold brews, and warm vibes. We believe every meal should feel like a celebration, whether it's a quick snack or a full feast.</p>
-        <p class="text-muted mb-4">Located in the heart of Akluj, we serve freshly prepared food every single day — from crispy fries to cheesy pizzas, sizzling Maggi to signature burgers. Everything is made to order, with love.</p>
+        <p class="text-muted mb-3">Welcome to The Laben Café — your neighbourhood spot for great food, cold brews, and warm vibes.</p>
+        <p class="text-muted mb-4">Located in the heart of Akluj, we serve freshly prepared food every single day — from crispy fries to cheesy pizzas, sizzling Maggi to signature burgers.</p>
         <div class="row g-3">
           <div class="col-6 reveal delay-1"><div class="about-feature"><i class="bi bi-fire text-accent fs-4"></i><div><strong>Made Fresh</strong><p class="small text-muted mb-0">Every order, every time</p></div></div></div>
           <div class="col-6 reveal delay-2"><div class="about-feature"><i class="bi bi-geo-alt-fill text-accent fs-4"></i><div><strong>Delivery Available</strong><p class="small text-muted mb-0">Order online, we deliver</p></div></div></div>
@@ -247,72 +291,129 @@
   </div>
 </div>
 
-<!-- ADMIN OFFCANVAS -->
-<div class="offcanvas offcanvas-end admin-offcanvas" id="adminPanel" style="width:min(560px,100vw)">
+<!-- ===================== ADMIN OFFCANVAS ===================== -->
+<div class="offcanvas offcanvas-end admin-offcanvas" id="adminPanel" style="width:min(600px,100vw)">
   <div class="offcanvas-header border-bottom">
     <h5 class="offcanvas-title"><i class="bi bi-gear-fill text-accent me-2"></i>Admin Panel</h5>
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
   </div>
   <div class="offcanvas-body">
+
+    <!-- LOGIN -->
     <div id="admin-login-wrap">
-      <p class="text-muted small mb-3">Login to manage your menu items.</p>
+      <p class="text-muted small mb-3">Login to manage your café.</p>
       <div class="mb-3"><input type="text" id="adm-user" class="form-control" placeholder="Username"></div>
       <div class="mb-3"><input type="password" id="adm-pass" class="form-control" placeholder="Password"></div>
       <button class="btn btn-primary-custom w-100" onclick="adminLogin()">Login</button>
       <p id="adm-err" class="text-danger small mt-2" style="display:none;">Wrong credentials.</p>
     </div>
+
+    <!-- DASHBOARD -->
     <div id="admin-dashboard" style="display:none;">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="mb-0 fw-bold">Admin Dashboard</h6>
         <button class="btn btn-sm btn-outline-secondary" onclick="adminLogout()">Logout</button>
       </div>
+
+      <!-- NOTIFICATION STATUS -->
+      <div class="notif-bell-wrap" id="notif-status-bar">
+        <i class="bi bi-bell-fill"></i>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;color:#333;">Order Notifications</div>
+          <div id="notif-status-text" class="notif-status-off" style="font-size:12px;">Not enabled yet</div>
+        </div>
+        <button onclick="requestNotificationPermission();updateNotifStatus();" class="btn btn-sm" style="background:#e8500a;color:#fff;border:none;border-radius:8px;font-size:12px;padding:4px 12px;">
+          <i class="bi bi-bell me-1"></i>Enable
+        </button>
+      </div>
+
+      <!-- TABS -->
       <div class="adm-tabs mb-4">
         <button class="adm-tab-btn active" id="adm-tab-orders" onclick="switchAdminTab('orders')">
           <i class="bi bi-receipt me-1"></i>Orders
           <span id="adm-new-badge" class="adm-new-badge" style="display:none;">0</span>
         </button>
-        <button class="adm-tab-btn" id="adm-tab-menu" onclick="switchAdminTab('menu')"><i class="bi bi-grid me-1"></i>Menu Items</button>
+        <button class="adm-tab-btn" id="adm-tab-menu" onclick="switchAdminTab('menu')">
+          <i class="bi bi-grid me-1"></i>Menu Items
+        </button>
+        <button class="adm-tab-btn" id="adm-tab-catmgr" onclick="switchAdminTab('catmgr')">
+          <i class="bi bi-tags me-1"></i>Categories
+        </button>
       </div>
+
+      <!-- ===== ORDERS PANEL ===== -->
       <div id="adm-panel-orders">
         <div id="adm-order-stats" class="adm-stats-row mb-3"></div>
         <div class="d-flex justify-content-between align-items-center mb-2">
           <span class="small text-muted">Total Orders: <strong id="adm-orders-count">0</strong></span>
           <div class="d-flex gap-2 align-items-center">
             <select id="adm-order-filter" class="form-select form-select-sm" style="width:auto;" onchange="renderOrdersList()">
-              <option value="all">All</option><option value="new">New</option><option value="preparing">Preparing</option><option value="delivered">Delivered</option>
+              <option value="all">All</option>
+              <option value="new">New</option>
+              <option value="preparing">Preparing</option>
+              <option value="delivered">Delivered</option>
             </select>
             <button class="btn btn-sm btn-outline-danger" onclick="clearAllOrders()">Clear Delivered</button>
           </div>
         </div>
         <div id="adm-orders-list"></div>
       </div>
+
+      <!-- ===== MENU ITEMS PANEL ===== -->
       <div id="adm-panel-menu" style="display:none;">
+        <!-- Add New Item Form -->
         <div class="add-item-form mb-4">
-          <h6 class="small fw-bold text-muted text-uppercase mb-3">Add New Item</h6>
+          <h6 class="small fw-bold text-muted text-uppercase mb-3">➕ Add New Item</h6>
           <div class="row g-2">
-            <div class="col-8"><input type="text" id="adm-name" class="form-control form-control-sm" placeholder="Item name"></div>
-            <div class="col-4"><input type="number" id="adm-price" class="form-control form-control-sm" placeholder="₹ Price"></div>
-            <div class="col-12"><input type="text" id="adm-desc" class="form-control form-control-sm" placeholder="Short description (optional)"></div>
+            <div class="col-8">
+              <input type="text" id="adm-name" class="form-control form-control-sm" placeholder="Item name">
+            </div>
+            <div class="col-4">
+              <input type="number" id="adm-price" class="form-control form-control-sm" placeholder="₹ Price" min="1">
+            </div>
+            <div class="col-12">
+              <input type="text" id="adm-desc" class="form-control form-control-sm" placeholder="Short description (optional)">
+            </div>
             <div class="col-8">
               <select id="adm-cat" class="form-select form-select-sm">
-                <option value="coffee">Coffee</option><option value="fries">Fries</option><option value="sandwich">Sandwich</option>
-                <option value="pizza">Pizza</option><option value="burger">Burger</option><option value="maggi">Maggi</option>
+                <!-- Populated dynamically by JS -->
               </select>
             </div>
-            <div class="col-4"><button class="btn btn-primary-custom btn-sm w-100" onclick="adminAddItem()">+ Add</button></div>
+            <div class="col-4">
+              <button class="btn btn-primary-custom btn-sm w-100" onclick="adminAddItem()">+ Add</button>
+            </div>
           </div>
         </div>
-        <h6 class="small fw-bold text-muted text-uppercase mb-2">All Items (<span id="adm-count">0</span>)</h6>
+
+        <h6 class="small fw-bold text-muted text-uppercase mb-2">
+          All Items (<span id="adm-count">0</span>)
+          <span class="ms-2 small fw-normal text-muted" style="text-transform:none;">Click ✏️ to edit name, price, or category</span>
+        </h6>
         <div id="adm-items-list"></div>
       </div>
-    </div>
+
+      <!-- ===== CATEGORY MANAGER PANEL ===== -->
+      <div id="adm-panel-catmgr" style="display:none;">
+        <!-- Add New Category -->
+        <div class="add-item-form mb-4">
+          <h6 class="small fw-bold text-muted text-uppercase mb-3">➕ Add New Category</h6>
+          <div class="d-flex gap-2">
+            <input type="text" id="adm-new-cat-input" class="form-control form-control-sm" placeholder="e.g. desserts, drinks, pasta..." style="flex:1;">
+            <button onclick="addCategory()" class="btn btn-primary-custom btn-sm" style="white-space:nowrap;">+ Add</button>
+          </div>
+          <div class="small text-muted mt-1">Category name will be lowercase, no spaces.</div>
+        </div>
+
+        <h6 class="small fw-bold text-muted text-uppercase mb-2">All Categories</h6>
+        <div id="adm-cat-list"></div>
+      </div>
+
+    </div><!-- /admin-dashboard -->
   </div>
 </div>
 
-<!-- ✅ Bootstrap JS -->
+<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- ✅ app.js — Firebase compat SDK already loaded above in <head> -->
 <script src="app.js"></script>
 
 <!-- UPI MODAL -->
@@ -332,30 +433,54 @@
     <div class="upi-apps"><span>GPay</span><span>PhonePe</span><span>Paytm</span><span>BHIM</span></div>
     <a id="upi-deep-link" href="#" class="upi-pay-btn"><span style="font-size:18px;">📲</span> Open UPI App to Pay</a>
     <p class="upi-note">↑ Works on mobile &nbsp;·&nbsp; Use QR on desktop</p>
-
-    <!-- UTR VERIFICATION -->
     <div class="upi-utr-section">
       <div class="upi-utr-label"><i class="bi bi-shield-check-fill"></i> Enter UTR / Transaction ID to confirm payment</div>
       <div class="upi-utr-hint">After paying → open your UPI app → Transaction History → copy the 12-digit UTR or Transaction ID</div>
       <input type="text" id="upi-utr-input" class="upi-utr-input" placeholder="e.g. 123456789012 or T2504031234567" maxlength="30" oninput="validateUtrInput()">
       <div id="upi-utr-error" class="upi-utr-error" style="display:none;">⚠️ Please enter a valid UTR / Transaction ID (at least 8 characters)</div>
     </div>
-
     <button class="upi-done-btn" onclick="confirmUpiPayment()">✅ I have paid — Confirm Order</button>
     <p style="font-size:11px;color:#aaa;margin-top:6px;">⚠️ Order only placed after valid transaction ID is entered</p>
   </div>
 </div>
 
-<!-- ANIMATIONS -->
+<!-- PAGE ANIMATIONS -->
 <script>
+  // Notification status update
+  function updateNotifStatus() {
+    const el = document.getElementById('notif-status-text');
+    if (!el) return;
+    if (!('Notification' in window)) {
+      el.textContent = 'Not supported in this browser';
+      el.className = 'notif-status-off';
+    } else if (Notification.permission === 'granted') {
+      el.textContent = '✅ Notifications ON — you will be alerted on new orders';
+      el.className = 'notif-status-on';
+    } else if (Notification.permission === 'denied') {
+      el.textContent = '❌ Blocked — please allow in browser settings';
+      el.className = 'notif-status-off';
+    } else {
+      el.textContent = 'Click Enable to get order alerts';
+      el.className = 'notif-status-off';
+    }
+  }
+
+  // Update status when admin panel opens
+  document.getElementById('adminPanel').addEventListener('show.bs.offcanvas', updateNotifStatus);
+
+  // Navbar scroll
   window.addEventListener('scroll', function() {
     var nav = document.getElementById('mainNav');
     if (window.scrollY > 50) nav.classList.add('scrolled'); else nav.classList.remove('scrolled');
   });
+
+  // Cursor glow
   document.addEventListener('mousemove', function(e) {
     var g = document.getElementById('cursorGlow');
     if (g) { g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px'; }
   });
+
+  // Hero particles
   (function() {
     var c = document.getElementById('heroParticles');
     if (!c) return;
@@ -369,6 +494,8 @@
       c.appendChild(p);
     }
   })();
+
+  // Scroll reveal
   (function() {
     var els = document.querySelectorAll('.reveal, .reveal-left, .reveal-right');
     var obs = new IntersectionObserver(function(entries) {
