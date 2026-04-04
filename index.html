@@ -3,8 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1410">
+  <meta name="theme-color" content="#e8500a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Laben Café">
   <title>The Laben Café</title>
+
+  <!-- PWA Manifest — makes app installable on home screen -->
+  <link rel="manifest" href="/manifest.json">
+
+  <!-- Apple touch icon -->
+  <link rel="apple-touch-icon" href="https://api.iconify.design/twemoji/hot-beverage.svg">
+
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -29,7 +40,7 @@
     }
     .adm-edit-btn:hover { background: #fff4f0; }
 
-    /* ===== CATEGORY MANAGER ===== */
+    /* ===== CATEGORY ROW ===== */
     .adm-cat-row {
       display: flex;
       align-items: center;
@@ -41,23 +52,48 @@
     }
     .adm-cat-row:last-child { border-bottom: none; }
 
-    /* ===== NOTIFICATION BELL ===== */
-    .notif-bell-wrap {
+    /* ===== NOTIFICATION CARD ===== */
+    .notif-card {
+      background: linear-gradient(135deg, #fff8f5 0%, #fff4ef 100%);
+      border: 1.5px solid #f5c8b0;
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    .notif-card-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: #c23a00;
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 14px;
-      background: #fff8f5;
-      border: 1px solid #f5d5c8;
-      border-radius: 12px;
-      margin-bottom: 14px;
-      font-size: 13px;
+      margin-bottom: 6px;
     }
-    .notif-bell-wrap i { color: #e8500a; font-size: 18px; }
-    .notif-status-on  { color: #16a34a; font-weight: 600; }
-    .notif-status-off { color: #888;    font-weight: 600; }
+    .notif-card-title i { font-size: 18px; }
+    .notif-status-text {
+      font-size: 12.5px;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+    .notif-enable-btn {
+      width: 100%;
+      padding: 10px;
+      background: #e8500a;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .notif-enable-btn:hover { background: #c23a00; }
 
-    /* ===== ADMIN ITEM WRAP ===== */
+    /* ===== ITEM WRAP OVERRIDE ===== */
     .adm-item {
       flex-direction: column !important;
       align-items: flex-start !important;
@@ -120,7 +156,7 @@
   <div class="hero-scroll-hint"><span>Scroll to explore</span><i class="bi bi-chevron-down"></i></div>
 </section>
 
-<!-- STATS BAR -->
+<!-- STATS -->
 <section class="stats-bar">
   <div class="container">
     <div class="row g-0 text-center">
@@ -132,7 +168,7 @@
   </div>
 </section>
 
-<!-- MENU SECTION -->
+<!-- MENU -->
 <section id="menu" class="section-pad bg-light-custom">
   <div class="container">
     <div class="section-header text-center mb-5 reveal">
@@ -140,13 +176,12 @@
       <h2 class="section-title">Our <span class="text-accent">Menu</span></h2>
       <p class="section-sub">Fresh, delicious, made with love — every single time.</p>
     </div>
-    <!-- Tabs are dynamically rendered by JS -->
     <ul class="nav menu-tabs justify-content-center flex-wrap mb-5 reveal" id="menuTabs"></ul>
     <div class="row g-4" id="menu-grid"></div>
   </div>
 </section>
 
-<!-- ORDER SECTION -->
+<!-- ORDER -->
 <section id="order" class="section-pad">
   <div class="container">
     <div class="section-header text-center mb-5 reveal">
@@ -216,13 +251,13 @@
       <p class="section-eyebrow">Our Food</p>
       <h2 class="section-title">Food <span class="text-accent">Gallery</span></h2>
     </div>
-    <div class="row g-3" id="gallery-grid">
+    <div class="row g-3">
       <div class="col-6 col-md-4 col-lg-3 reveal delay-1"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&q=80" alt="Pizza" class="img-fluid"><div class="gallery-overlay"><span>Pizza</span></div></div></div>
       <div class="col-6 col-md-4 col-lg-3 reveal delay-2"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80" alt="Burger" class="img-fluid"><div class="gallery-overlay"><span>Burger</span></div></div></div>
       <div class="col-6 col-md-4 col-lg-3 reveal delay-3"><div class="gallery-item"><img src="https://tse3.mm.bing.net/th/id/OIP.XYRdLzXxxNaS_ZWH8QE2eQHaIo?rs=1&pid=ImgDetMain&o=7&rm=3"><div class="gallery-overlay"><span>Coffee</span></div></div></div>
       <div class="col-6 col-md-4 col-lg-3 reveal delay-4"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1585325701956-60dd9c8553bc?w=400&q=80" alt="Fries" class="img-fluid"><div class="gallery-overlay"><span>Fries</span></div></div></div>
       <div class="col-6 col-md-4 col-lg-3 reveal delay-1"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&q=80" alt="Sandwich" class="img-fluid"><div class="gallery-overlay"><span>Sandwich</span></div></div></div>
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-2"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80" alt="Hot Coffee" class="img-fluid"><div class="gallery-overlay"><span>Hot Coffee</span></div></div></div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-2"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80" alt="Coffee" class="img-fluid"><div class="gallery-overlay"><span>Hot Coffee</span></div></div></div>
       <div class="col-6 col-md-4 col-lg-3 reveal delay-3"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&q=80" alt="Food" class="img-fluid"><div class="gallery-overlay"><span>Specials</span></div></div></div>
       <div class="col-6 col-md-4 col-lg-3 reveal delay-4"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1554080353-a576cf803bda?w=400&q=80" alt="Café" class="img-fluid"><div class="gallery-overlay"><span>Our Café</span></div></div></div>
     </div>
@@ -237,7 +272,7 @@
         <p class="section-eyebrow">Who We Are</p>
         <h2 class="section-title mb-4">About <span class="text-accent">The Laben Café</span></h2>
         <p class="text-muted mb-3">Welcome to The Laben Café — your neighbourhood spot for great food, cold brews, and warm vibes.</p>
-        <p class="text-muted mb-4">Located in the heart of Akluj, we serve freshly prepared food every single day — from crispy fries to cheesy pizzas, sizzling Maggi to signature burgers.</p>
+        <p class="text-muted mb-4">Located in the heart of Akluj, we serve freshly prepared food every single day.</p>
         <div class="row g-3">
           <div class="col-6 reveal delay-1"><div class="about-feature"><i class="bi bi-fire text-accent fs-4"></i><div><strong>Made Fresh</strong><p class="small text-muted mb-0">Every order, every time</p></div></div></div>
           <div class="col-6 reveal delay-2"><div class="about-feature"><i class="bi bi-geo-alt-fill text-accent fs-4"></i><div><strong>Delivery Available</strong><p class="small text-muted mb-0">Order online, we deliver</p></div></div></div>
@@ -291,7 +326,7 @@
   </div>
 </div>
 
-<!-- ===================== ADMIN OFFCANVAS ===================== -->
+<!-- =================== ADMIN OFFCANVAS =================== -->
 <div class="offcanvas offcanvas-end admin-offcanvas" id="adminPanel" style="width:min(600px,100vw)">
   <div class="offcanvas-header border-bottom">
     <h5 class="offcanvas-title"><i class="bi bi-gear-fill text-accent me-2"></i>Admin Panel</h5>
@@ -315,16 +350,21 @@
         <button class="btn btn-sm btn-outline-secondary" onclick="adminLogout()">Logout</button>
       </div>
 
-      <!-- NOTIFICATION STATUS -->
-      <div class="notif-bell-wrap" id="notif-status-bar">
-        <i class="bi bi-bell-fill"></i>
-        <div style="flex:1;">
-          <div style="font-size:13px;font-weight:600;color:#333;">Order Notifications</div>
-          <div id="notif-status-text" class="notif-status-off" style="font-size:12px;">Not enabled yet</div>
+      <!-- NOTIFICATION CARD — Real mobile push notifications like WhatsApp -->
+      <div class="notif-card">
+        <div class="notif-card-title">
+          <i class="bi bi-bell-fill"></i> Order Notifications
         </div>
-        <button onclick="requestNotificationPermission();updateNotifStatus();" class="btn btn-sm" style="background:#e8500a;color:#fff;border:none;border-radius:8px;font-size:12px;padding:4px 12px;">
-          <i class="bi bi-bell me-1"></i>Enable
+        <div class="notif-status-text" id="notif-status-text" style="color:#d97706;">
+          🔔 Tap Enable to get order alerts on your phone like WhatsApp
+        </div>
+        <button class="notif-enable-btn" id="notif-enable-btn"
+          onclick="requestNotificationPermission().then(()=>updateNotifStatus())">
+          <i class="bi bi-bell"></i> Enable Notifications
         </button>
+        <div style="font-size:11px;color:#aaa;margin-top:8px;text-align:center;">
+          Works on Android Chrome · iOS Safari (add to home screen first)
+        </div>
       </div>
 
       <!-- TABS -->
@@ -345,7 +385,7 @@
       <div id="adm-panel-orders">
         <div id="adm-order-stats" class="adm-stats-row mb-3"></div>
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <span class="small text-muted">Total Orders: <strong id="adm-orders-count">0</strong></span>
+          <span class="small text-muted">Total: <strong id="adm-orders-count">0</strong></span>
           <div class="d-flex gap-2 align-items-center">
             <select id="adm-order-filter" class="form-select form-select-sm" style="width:auto;" onchange="renderOrdersList()">
               <option value="all">All</option>
@@ -361,49 +401,33 @@
 
       <!-- ===== MENU ITEMS PANEL ===== -->
       <div id="adm-panel-menu" style="display:none;">
-        <!-- Add New Item Form -->
         <div class="add-item-form mb-4">
           <h6 class="small fw-bold text-muted text-uppercase mb-3">➕ Add New Item</h6>
           <div class="row g-2">
-            <div class="col-8">
-              <input type="text" id="adm-name" class="form-control form-control-sm" placeholder="Item name">
-            </div>
-            <div class="col-4">
-              <input type="number" id="adm-price" class="form-control form-control-sm" placeholder="₹ Price" min="1">
-            </div>
-            <div class="col-12">
-              <input type="text" id="adm-desc" class="form-control form-control-sm" placeholder="Short description (optional)">
-            </div>
-            <div class="col-8">
-              <select id="adm-cat" class="form-select form-select-sm">
-                <!-- Populated dynamically by JS -->
-              </select>
-            </div>
-            <div class="col-4">
-              <button class="btn btn-primary-custom btn-sm w-100" onclick="adminAddItem()">+ Add</button>
-            </div>
+            <div class="col-8"><input type="text" id="adm-name" class="form-control form-control-sm" placeholder="Item name"></div>
+            <div class="col-4"><input type="number" id="adm-price" class="form-control form-control-sm" placeholder="₹ Price" min="1"></div>
+            <div class="col-12"><input type="text" id="adm-desc" class="form-control form-control-sm" placeholder="Short description (optional)"></div>
+            <div class="col-8"><select id="adm-cat" class="form-select form-select-sm"></select></div>
+            <div class="col-4"><button class="btn btn-primary-custom btn-sm w-100" onclick="adminAddItem()">+ Add</button></div>
           </div>
         </div>
-
         <h6 class="small fw-bold text-muted text-uppercase mb-2">
           All Items (<span id="adm-count">0</span>)
-          <span class="ms-2 small fw-normal text-muted" style="text-transform:none;">Click ✏️ to edit name, price, or category</span>
+          <span class="ms-1 small fw-normal" style="text-transform:none;color:#aaa;">✏️ to edit</span>
         </h6>
         <div id="adm-items-list"></div>
       </div>
 
       <!-- ===== CATEGORY MANAGER PANEL ===== -->
       <div id="adm-panel-catmgr" style="display:none;">
-        <!-- Add New Category -->
         <div class="add-item-form mb-4">
           <h6 class="small fw-bold text-muted text-uppercase mb-3">➕ Add New Category</h6>
           <div class="d-flex gap-2">
             <input type="text" id="adm-new-cat-input" class="form-control form-control-sm" placeholder="e.g. desserts, drinks, pasta..." style="flex:1;">
             <button onclick="addCategory()" class="btn btn-primary-custom btn-sm" style="white-space:nowrap;">+ Add</button>
           </div>
-          <div class="small text-muted mt-1">Category name will be lowercase, no spaces.</div>
+          <div class="small text-muted mt-1">Lowercase, no spaces.</div>
         </div>
-
         <h6 class="small fw-bold text-muted text-uppercase mb-2">All Categories</h6>
         <div id="adm-cat-list"></div>
       </div>
@@ -435,7 +459,7 @@
     <p class="upi-note">↑ Works on mobile &nbsp;·&nbsp; Use QR on desktop</p>
     <div class="upi-utr-section">
       <div class="upi-utr-label"><i class="bi bi-shield-check-fill"></i> Enter UTR / Transaction ID to confirm payment</div>
-      <div class="upi-utr-hint">After paying → open your UPI app → Transaction History → copy the 12-digit UTR or Transaction ID</div>
+      <div class="upi-utr-hint">After paying → open your UPI app → Transaction History → copy the 12-digit UTR</div>
       <input type="text" id="upi-utr-input" class="upi-utr-input" placeholder="e.g. 123456789012 or T2504031234567" maxlength="30" oninput="validateUtrInput()">
       <div id="upi-utr-error" class="upi-utr-error" style="display:none;">⚠️ Please enter a valid UTR / Transaction ID (at least 8 characters)</div>
     </div>
@@ -444,29 +468,12 @@
   </div>
 </div>
 
-<!-- PAGE ANIMATIONS -->
+<!-- PAGE SCRIPTS -->
 <script>
-  // Notification status update
-  function updateNotifStatus() {
-    const el = document.getElementById('notif-status-text');
-    if (!el) return;
-    if (!('Notification' in window)) {
-      el.textContent = 'Not supported in this browser';
-      el.className = 'notif-status-off';
-    } else if (Notification.permission === 'granted') {
-      el.textContent = '✅ Notifications ON — you will be alerted on new orders';
-      el.className = 'notif-status-on';
-    } else if (Notification.permission === 'denied') {
-      el.textContent = '❌ Blocked — please allow in browser settings';
-      el.className = 'notif-status-off';
-    } else {
-      el.textContent = 'Click Enable to get order alerts';
-      el.className = 'notif-status-off';
-    }
-  }
-
-  // Update status when admin panel opens
-  document.getElementById('adminPanel').addEventListener('show.bs.offcanvas', updateNotifStatus);
+  // Update notif status when admin panel opens
+  document.getElementById('adminPanel').addEventListener('show.bs.offcanvas', () => {
+    if (typeof updateNotifStatus === 'function') updateNotifStatus();
+  });
 
   // Navbar scroll
   window.addEventListener('scroll', function() {
@@ -477,7 +484,7 @@
   // Cursor glow
   document.addEventListener('mousemove', function(e) {
     var g = document.getElementById('cursorGlow');
-    if (g) { g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px'; }
+    if (g) { g.style.left = e.clientX+'px'; g.style.top = e.clientY+'px'; }
   });
 
   // Hero particles
@@ -487,10 +494,10 @@
     for (var i = 0; i < 18; i++) {
       var p = document.createElement('div');
       p.className = 'particle';
-      p.style.left = Math.random() * 100 + '%';
-      p.style.setProperty('--dur', (6 + Math.random() * 8) + 's');
-      p.style.setProperty('--delay', (Math.random() * 8) + 's');
-      p.style.width = p.style.height = (2 + Math.random() * 3) + 'px';
+      p.style.left = Math.random()*100+'%';
+      p.style.setProperty('--dur',(6+Math.random()*8)+'s');
+      p.style.setProperty('--delay',(Math.random()*8)+'s');
+      p.style.width = p.style.height = (2+Math.random()*3)+'px';
       c.appendChild(p);
     }
   })();
@@ -499,8 +506,8 @@
   (function() {
     var els = document.querySelectorAll('.reveal, .reveal-left, .reveal-right');
     var obs = new IntersectionObserver(function(entries) {
-      entries.forEach(function(e) { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
-    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+      entries.forEach(function(e) { if(e.isIntersecting){e.target.classList.add('visible');obs.unobserve(e.target);} });
+    }, { threshold:0.12, rootMargin:'0px 0px -40px 0px' });
     els.forEach(function(el) { obs.observe(el); });
   })();
 </script>
