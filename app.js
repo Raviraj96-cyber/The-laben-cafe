@@ -11,7 +11,7 @@
 // ===== YOUR FCM VAPID KEY =====
 // Get this from Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
 // Click "Generate key pair" and paste the key here
-const FCM_VAPID_KEY = 'YOUR_VAPID_KEY_HERE';
+const FCM_VAPID_KEY = '236045385314';
 // IMPORTANT: Replace above with your actual VAPID key from Firebase Console
 // Firebase Console → Project Settings → Cloud Messaging tab → Web Push certificates
 
