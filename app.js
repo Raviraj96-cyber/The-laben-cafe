@@ -1,4 +1,4 @@
-// ===== CATEGORY IMAGES (fallbacks) =====
+// ===== CATEGORY IMAGES (fallbacks) ===== 
 const CATEGORY_IMAGES = {
   coffee:   'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=400&q=80',
   fries:    'https://images.unsplash.com/photo-1585325701956-60dd9c8553bc?w=400&q=80',
