@@ -11,7 +11,7 @@
 // =====================================================================
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🔑  PASTE YOUR VAPID KEY HERE  (notifications won't work without it)
+// 🔑  PASTE YOUR VAPID KEY HERE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const FCM_VAPID_KEY = 'BO88gpkWJVEEGuurJS12tapPRQw0RwgFT9wcEyQSL4CMkgakil7Vc54nqKB7mOZrVL1Q-e9E_n48kuMWiEO1cFY';
 
@@ -36,7 +36,7 @@ const CATEGORY_IMAGES = {
   maggi:    'https://images.unsplash.com/photo-1555126634-323283e090fa?w=400&q=80',
 };
 
-// ── Local image filenames (relative to site root) ─────────────────────────
+// ── Local image filenames ─────────────────────────────────────────────────
 const LOCAL_ITEM_IMAGES = {
   'Cold Coffee With Crush':             'laban-cafe/imeges/cold_cofee_with_crush.jpg',
   'Cold Coffee With Icecream':          'cold-coffee-icecream.jpg',
@@ -146,48 +146,44 @@ function showToast(msg, type) {
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 3500);
 }
 
-// ── Browser notification (works in foreground) ────────────────────────────
+// ── Browser notification ──────────────────────────────────────────────────
 function showBrowserNotification(title, body, orderId) {
   if (Notification.permission !== 'granted') return;
-  // Use SW registration to show notification (works on mobile)
+  const opts = {
+    body,
+    icon:    '/icon-192.png',
+    badge:   '/icon-72.png',
+    tag:     orderId ? 'order-' + orderId : 'laben-new-order',
+    renotify: true,
+    vibrate: [300, 100, 300, 100, 300],
+    requireInteraction: true,
+    data:    { url: '/?openAdmin=1', orderId: orderId || '' },
+    actions: [
+      { action: 'open',    title: '👀 View Order' },
+      { action: 'dismiss', title: '✕ Dismiss' }
+    ]
+  };
+  // Prefer SW registration (works on mobile)
   if (swRegistration) {
-    swRegistration.showNotification(title, {
-      body,
-      icon:    '/icon-192.png',
-      badge:   '/icon-72.png',
-      tag:     orderId ? 'order-' + orderId : 'laben-new-order',
-      renotify: true,
-      vibrate: [300, 100, 300, 100, 300],
-      requireInteraction: true,
-      data:    { url: '/?openAdmin=1', orderId: orderId || '' },
-      actions: [
-        { action: 'open',    title: '👀 View Order' },
-        { action: 'dismiss', title: '✕ Dismiss' }
-      ]
+    swRegistration.showNotification(title, opts).catch(err => {
+      console.warn('SW showNotification failed:', err);
+      try { new Notification(title, { body, icon: '/icon-192.png' }); } catch(e) {}
     });
     return;
   }
-  // Fallback: try navigator.serviceWorker.ready
+  // Fallback: serviceWorker.ready
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready.then(reg => {
-      reg.showNotification(title, {
-        body,
-        icon:    '/icon-192.png',
-        badge:   '/icon-72.png',
-        tag:     orderId ? 'order-' + orderId : 'laben-new-order',
-        renotify: true,
-        vibrate: [300, 100, 300, 100, 300],
-        requireInteraction: true,
-        data:    { url: '/?openAdmin=1', orderId: orderId || '' },
-        actions: [
-          { action: 'open',    title: '👀 View Order' },
-          { action: 'dismiss', title: '✕ Dismiss' }
-        ]
+      reg.showNotification(title, opts).catch(err => {
+        console.warn('SW ready showNotification failed:', err);
+        try { new Notification(title, { body, icon: '/icon-192.png' }); } catch(e) {}
       });
-    }).catch(err => console.warn('showNotification failed:', err));
+    }).catch(() => {
+      try { new Notification(title, { body, icon: '/icon-192.png' }); } catch(e) {}
+    });
     return;
   }
-  // Final fallback: basic Notification API (desktop only)
+  // Final fallback: basic Notification API
   try { new Notification(title, { body, icon: '/icon-192.png' }); } catch(e) {}
 }
 
@@ -195,7 +191,9 @@ function showBrowserNotification(title, body, orderId) {
 function initFirebase() {
   try {
     if (typeof firebase === 'undefined') {
-      showToast('⚠️ Firebase SDK not loaded', 'warning'); return;
+      console.warn('Firebase SDK not loaded');
+      updateNotifStatus();
+      return;
     }
     if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
 
@@ -208,21 +206,29 @@ function initFirebase() {
 
     // FCM — only on HTTPS or localhost
     if (firebase.messaging && firebase.messaging.isSupported()) {
-      firebaseMsg = firebase.messaging();
-
-      // Foreground messages: show notification + toast
-      firebaseMsg.onMessage(payload => {
-        console.log('[FCM] Foreground message:', payload);
-        const data  = payload.data  || {};
-        const notif = payload.notification || {};
-        const title = data.title || notif.title || '🛎️ New Order!';
-        const body  = data.body  || notif.body  || 'A new order arrived.';
-        showToast('🛎️ ' + body, 'info');
-        showBrowserNotification(title, body, data.orderId);
-      });
+      try {
+        firebaseMsg = firebase.messaging();
+        // Foreground messages
+        firebaseMsg.onMessage(payload => {
+          console.log('[FCM] Foreground message:', payload);
+          const data  = payload.data  || {};
+          const notif = payload.notification || {};
+          const title = data.title || notif.title || '🛎️ New Order!';
+          const body  = data.body  || notif.body  || 'A new order arrived.';
+          showToast('🛎️ ' + body, 'info');
+          showBrowserNotification(title, body, data.orderId || '');
+        });
+      } catch(fcmErr) {
+        console.warn('[FCM] Init failed:', fcmErr);
+        firebaseMsg = null;
+      }
     } else {
       console.warn('[FCM] Not supported in this browser/context.');
+      firebaseMsg = null;
     }
+
+    // Update notification status now that FCM state is known
+    updateNotifStatus();
 
     showToast('🔥 Firebase connected!', 'success');
 
@@ -302,6 +308,7 @@ function initFirebase() {
   } catch(e) {
     console.error('Firebase init error:', e);
     showToast('⚠️ Firebase failed: ' + e.message, 'error');
+    updateNotifStatus();
   }
 }
 
@@ -325,96 +332,157 @@ function saveCategoriesToFirebase() {
   firebaseDB.ref('categories').set(categories).catch(e => console.warn('Cat save:', e));
 }
 
-// ── FCM subscription ──────────────────────────────────────────────────────
+// ── FCM / Notification subscription ──────────────────────────────────────
+//
+// BUG FIX: The original code hid the Enable button when firebaseMsg was null
+// (e.g. HTTP, file://, or unsupported browser). Now we always show the button
+// and fall back to plain Notification API permission when FCM isn't available.
+// This makes "Enable Notifications" work on any browser/context.
+//
 async function subscribeToPushNotifications() {
-  if (!FCM_VAPID_KEY || FCM_VAPID_KEY === 'YOUR_VAPID_KEY_HERE') {
-    showToast('⚠️ Set FCM_VAPID_KEY in app.js first!', 'warning');
-    return false;
-  }
-  if (!firebaseMsg) {
-    showToast('❌ FCM not available in this browser', 'error');
+  const btn = document.getElementById('notif-enable-btn');
+
+  // ── Step 1: Browser supports Notification API at all? ──────────────────
+  if (!('Notification' in window)) {
+    showToast('❌ This browser does not support notifications', 'error');
     updateNotifStatus();
     return false;
   }
 
+  // ── Step 2: Request permission ─────────────────────────────────────────
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Requesting…'; }
+  let perm;
   try {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') {
-      showToast('❌ Notification permission denied', 'error');
-      updateNotifStatus();
-      return false;
-    }
+    perm = await Notification.requestPermission();
+  } catch(e) {
+    perm = 'denied';
+  }
 
-    // Ensure SW is ready before getting token
-    let swReg = swRegistration;
-    if (!swReg) {
-      try { swReg = await navigator.serviceWorker.ready; } catch(e) {}
-    }
-
-    const tokenOpts = { vapidKey: FCM_VAPID_KEY };
-    if (swReg) tokenOpts.serviceWorkerRegistration = swReg;
-
-    const token = await firebaseMsg.getToken(tokenOpts);
-    if (!token) {
-      showToast('❌ Could not get FCM token. Check VAPID key.', 'error');
-      updateNotifStatus();
-      return false;
-    }
-
-    fcmToken = token;
-
-    if (firebaseOK && firebaseDB) {
-      await firebaseDB.ref('fcm_tokens/' + token.slice(-20)).set({
-        token,
-        device:    navigator.userAgent.slice(0, 100),
-        timestamp: Date.now()
-      });
-    }
-
-    console.log('✅ FCM token saved:', token.slice(0, 20) + '…');
-    showToast('🔔 Notifications enabled! Works even when browser is closed.', 'success');
-    updateNotifStatus();
-    return true;
-
-  } catch(err) {
-    console.error('FCM subscribe error:', err);
-    // Don't show error for HTTPS/SW issues — just update status quietly
+  if (perm !== 'granted') {
+    showToast('❌ Notification permission denied. Allow in browser settings.', 'error');
+    if (btn) { btn.disabled = false; }
     updateNotifStatus();
     return false;
   }
+
+  // ── Step 3: Try FCM (full push — works when browser is closed) ──────────
+  if (firebaseMsg && FCM_VAPID_KEY && FCM_VAPID_KEY !== 'YOUR_VAPID_KEY_HERE') {
+    try {
+      let swReg = swRegistration;
+      if (!swReg && 'serviceWorker' in navigator) {
+        try { swReg = await navigator.serviceWorker.ready; } catch(e) {}
+      }
+      const tokenOpts = { vapidKey: FCM_VAPID_KEY };
+      if (swReg) tokenOpts.serviceWorkerRegistration = swReg;
+
+      const token = await firebaseMsg.getToken(tokenOpts);
+      if (token) {
+        fcmToken = token;
+        if (firebaseOK && firebaseDB) {
+          await firebaseDB.ref('fcm_tokens/' + token.slice(-20)).set({
+            token,
+            device:    navigator.userAgent.slice(0, 100),
+            timestamp: Date.now()
+          }).catch(e => console.warn('Token save:', e));
+        }
+        console.log('✅ FCM token saved:', token.slice(0, 20) + '…');
+        showToast('🔔 Push notifications enabled! Works even when browser is closed.', 'success');
+        if (btn) { btn.disabled = false; }
+        updateNotifStatus();
+        return true;
+      }
+    } catch(fcmErr) {
+      console.warn('[FCM] getToken failed, falling back to browser notifications:', fcmErr);
+    }
+  }
+
+  // ── Step 4: Fallback — plain browser notification (works while page is open)
+  // This runs when FCM isn't available (HTTP, file://, unsupported browser, etc.)
+  showToast('✅ Notifications enabled! Alerts will show while this tab is open.', 'success');
+  // Send a test notification so admin knows it worked
+  try {
+    showBrowserNotification(
+      '✅ Notifications Active — The Laben Café',
+      'You will receive order alerts while this tab is open.',
+      ''
+    );
+  } catch(e) {}
+
+  if (btn) { btn.disabled = false; }
+  updateNotifStatus();
+  return true;
 }
 
+// ── Update notification status UI ─────────────────────────────────────────
+//
+// BUG FIX (original): The button was hidden whenever firebaseMsg was null,
+// making the UI broken on HTTP or browsers without FCM. Now the button is
+// always shown unless permission is already granted (nothing left to do)
+// or Notification API is completely absent.
+//
 function updateNotifStatus() {
   const el  = document.getElementById('notif-status-text');
   const btn = document.getElementById('notif-enable-btn');
   if (!el) return;
 
-  const vapidMissing = !FCM_VAPID_KEY || FCM_VAPID_KEY === 'YOUR_VAPID_KEY_HERE';
-
+  // No Notification API at all
   if (!('Notification' in window)) {
     el.innerHTML   = '❌ Notifications not supported in this browser';
     el.style.color = '#dc2626';
     if (btn) btn.style.display = 'none';
-  } else if (vapidMissing) {
-    el.innerHTML   = '⚠️ Paste your VAPID key in app.js line 17 to enable notifications';
-    el.style.color = '#d97706';
-    if (btn) btn.style.display = 'none';
-  } else if (Notification.permission === 'granted' && fcmToken) {
-    el.innerHTML   = '✅ <strong>Active</strong> — Alerts arrive even when browser is closed';
+    return;
+  }
+
+  // Permission denied
+  if (Notification.permission === 'denied') {
+    el.innerHTML   = '❌ <strong>Blocked</strong> — Go to browser Settings → Site Settings → Notifications → Allow for this site, then reload.';
+    el.style.color = '#dc2626';
+    if (btn) {
+      btn.style.display  = '';
+      btn.disabled       = false;
+      btn.innerHTML      = '<i class="bi bi-gear-fill me-1"></i> How to unblock';
+      btn.onclick        = () => showToast('Go to browser address bar → 🔒 Lock icon → Site settings → Notifications → Allow', 'info');
+    }
+    return;
+  }
+
+  // Already enabled with FCM push token
+  if (Notification.permission === 'granted' && fcmToken) {
+    el.innerHTML   = '✅ <strong>Push Active</strong> — Alerts arrive even when browser is closed 🔔';
     el.style.color = '#16a34a';
     if (btn) btn.style.display = 'none';
-  } else if (Notification.permission === 'denied') {
-    el.innerHTML   = '❌ <strong>Blocked</strong> — Go to browser Settings → Notifications → Allow for this site';
-    el.style.color = '#dc2626';
-    if (btn) { btn.style.display = ''; btn.textContent = '⚙️ Open Browser Settings'; }
-  } else if (!firebaseMsg) {
-    el.innerHTML   = '⚠️ FCM needs HTTPS — works on your live site, not file://';
+    return;
+  }
+
+  // Already enabled via browser notification (no FCM token yet)
+  if (Notification.permission === 'granted' && !fcmToken) {
+    const isHttps = location.protocol === 'https:' || location.hostname === 'localhost';
+    el.innerHTML   = isHttps
+      ? '🔔 <strong>Active (browser only)</strong> — Click Enable again to upgrade to full push notifications.'
+      : '🔔 <strong>Active (browser only)</strong> — Alerts while this tab is open. Host on HTTPS for full push support.';
     el.style.color = '#d97706';
-    if (btn) btn.style.display = 'none';
+    if (btn) {
+      btn.style.display  = '';
+      btn.disabled       = false;
+      btn.innerHTML      = '<i class="bi bi-bell me-1"></i> Upgrade to Push Notifications';
+      btn.onclick        = subscribeToPushNotifications;
+    }
+    return;
+  }
+
+  // Default: not yet enabled
+  if (!firebaseMsg || !FCM_VAPID_KEY || FCM_VAPID_KEY === 'YOUR_VAPID_KEY_HERE') {
+    el.innerHTML   = '🔔 Tap <strong>Enable</strong> to get order alerts while this tab is open';
+    el.style.color = '#d97706';
   } else {
-    el.innerHTML   = '🔔 Tap <strong>Enable</strong> to get order alerts like WhatsApp';
+    el.innerHTML   = '🔔 Tap <strong>Enable</strong> to get order alerts even when browser is closed';
     el.style.color = '#d97706';
-    if (btn) { btn.style.display = ''; btn.textContent = '🔔 Enable Notifications'; }
+  }
+  if (btn) {
+    btn.style.display  = '';
+    btn.disabled       = false;
+    btn.innerHTML      = '<i class="bi bi-bell me-1"></i> Enable Notifications';
+    btn.onclick        = subscribeToPushNotifications;
   }
 }
 
@@ -725,167 +793,167 @@ function deleteCategory(cat) {
 async function handleNewItemImageUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
-  const preview = document.getElementById('adm-new-img-preview');
-  const label   = document.getElementById('adm-new-img-label');
   try {
-    if (label) label.textContent = 'Uploading…';
-    pendingNewItemImg = await fileToBase64(file);
-    if (preview) { preview.src = pendingNewItemImg; preview.style.display = 'block'; }
-    if (label)   label.textContent = '✅ Image ready';
-    showToast('Image ready!', 'success');
+    const b64 = await fileToBase64(file);
+    pendingNewItemImg = b64;
+    const preview = document.getElementById('adm-new-img-preview');
+    const label   = document.getElementById('adm-new-img-label');
+    if (preview) { preview.src = b64; preview.style.display = 'block'; }
+    if (label)   label.textContent = '✅ ' + file.name.slice(0, 18);
   } catch(e) {
-    showToast('Image upload failed', 'error');
-    if (label) label.textContent = '📷 Choose Image';
+    showToast('Image load failed', 'error');
   }
+}
+
+function applyNewUrlImage() {
+  const input = document.getElementById('adm-new-url-input');
+  const url   = input ? input.value.trim() : '';
+  if (!url) { showToast('Enter a URL', 'error'); return; }
+  pendingNewItemImg = url;
+  showToast('✅ Image URL set', 'success');
 }
 
 async function handleEditItemImageUpload(event, itemId) {
   const file = event.target.files[0];
   if (!file) return;
-  const preview = document.getElementById('adm-edit-img-preview-' + itemId);
-  const label   = document.getElementById('adm-edit-img-label-'   + itemId);
   try {
-    if (label) label.textContent = 'Uploading…';
-    const base64 = await fileToBase64(file);
-    if (preview) { preview.src = base64; preview.style.display = 'block'; }
-    if (label)   label.textContent = '✅ Image ready';
-    event.target._base64 = base64;
-    showToast('Image ready!', 'success');
+    const b64     = await fileToBase64(file);
+    const preview = document.getElementById('adm-edit-img-preview-' + itemId);
+    const label   = document.getElementById('adm-edit-img-label-'   + itemId);
+    if (preview) preview.src = b64;
+    if (label)   label.textContent = '✅ ' + file.name.slice(0, 18);
+    // Store temporarily on the element so saveEditItem can read it
+    if (preview) preview.dataset.pending = b64;
   } catch(e) {
-    showToast('Image upload failed', 'error');
-    if (label) label.textContent = '📷 Upload New Image';
+    showToast('Image load failed', 'error');
   }
 }
 
-// ── Admin: handle URL image for a menu item ───────────────────────────────
-async function applyUrlImage(itemId) {
-  const input = document.getElementById('adm-edit-url-input-' + itemId);
-  if (!input) return;
-  const url = input.value.trim();
-  if (!url) { showToast('Enter an image URL', 'error'); return; }
-  const preview = document.getElementById('adm-edit-img-preview-' + itemId);
-  if (preview) { preview.src = url; preview.style.display = 'block'; }
-  // Store URL in a temp attribute on the file input element for saveEditItem to pick up
-  const fileInput = document.getElementById('adm-edit-img-input-' + itemId);
-  if (fileInput) fileInput._urlImg = url;
-  showToast('Image URL applied!', 'success');
+function applyUrlImage(itemId) {
+  const input   = document.getElementById('adm-edit-url-input-'     + itemId);
+  const preview = document.getElementById('adm-edit-img-preview-'   + itemId);
+  const url     = input ? input.value.trim() : '';
+  if (!url) { showToast('Enter a URL', 'error'); return; }
+  if (preview) { preview.src = url; preview.dataset.pending = url; }
+  showToast('✅ Image URL applied', 'success');
 }
 
-// ── Admin menu items ──────────────────────────────────────────────────────
+// ── Admin item list ───────────────────────────────────────────────────────
 function adminAddItem() {
-  const name  = document.getElementById('adm-name').value.trim();
-  const price = parseFloat(document.getElementById('adm-price').value);
-  const desc  = document.getElementById('adm-desc').value.trim();
-  const cat   = document.getElementById('adm-cat').value;
-  if (!name || !price) { alert('Please enter item name and price.'); return; }
-  const newItem = { id: nextId++, name, desc: desc || '', price, cat, img: pendingNewItemImg || '' };
+  const nameEl  = document.getElementById('adm-name');
+  const priceEl = document.getElementById('adm-price');
+  const descEl  = document.getElementById('adm-desc');
+  const catEl   = document.getElementById('adm-cat');
+  const name  = nameEl  ? nameEl.value.trim()         : '';
+  const price = priceEl ? parseInt(priceEl.value, 10) : 0;
+  const desc  = descEl  ? descEl.value.trim()         : '';
+  const cat   = catEl   ? catEl.value                 : categories[0] || 'other';
+  if (!name)       { showToast('Enter item name',         'error');   return; }
+  if (!price || price < 1) { showToast('Enter valid price', 'error'); return; }
+  const newItem = { id: nextId++, name, price, desc, cat, img: pendingNewItemImg || '' };
   menuData.push(newItem);
-  saveMenu(); saveMenuItemToFirebase(newItem); renderAdminList(); renderMenu();
-  document.getElementById('adm-name').value  = '';
-  document.getElementById('adm-price').value = '';
-  document.getElementById('adm-desc').value  = '';
+  saveMenu();
+  saveMenuItemToFirebase(newItem);
+  renderMenu();
+  renderAdminList();
+  if (nameEl)  nameEl.value  = '';
+  if (priceEl) priceEl.value = '';
+  if (descEl)  descEl.value  = '';
   pendingNewItemImg = '';
-  const preview   = document.getElementById('adm-new-img-preview');
-  const label     = document.getElementById('adm-new-img-label');
-  const fileInput = document.getElementById('adm-new-img-input');
-  const urlInput  = document.getElementById('adm-new-url-input');
-  if (preview)   { preview.src = ''; preview.style.display = 'none'; }
-  if (label)     label.textContent = '📷 Choose Image';
-  if (fileInput) fileInput.value = '';
-  if (urlInput)  urlInput.value = '';
+  const preview = document.getElementById('adm-new-img-preview');
+  const label   = document.getElementById('adm-new-img-label');
+  if (preview) { preview.src = ''; preview.style.display = 'none'; }
+  if (label)   label.textContent = 'Choose Image';
   showToast('"' + name + '" added!', 'success');
 }
 
-// Apply URL image when adding new item
-async function applyNewUrlImage() {
-  const input = document.getElementById('adm-new-url-input');
-  if (!input) return;
-  const url = input.value.trim();
-  if (!url) { showToast('Enter an image URL', 'error'); return; }
-  const preview = document.getElementById('adm-new-img-preview');
-  pendingNewItemImg = url;
-  if (preview) { preview.src = url; preview.style.display = 'block'; }
-  const label = document.getElementById('adm-new-img-label');
-  if (label) label.textContent = '✅ Image ready (URL)';
-  showToast('Image URL applied!', 'success');
-}
-
-function adminDeleteItem(id) {
-  if (!confirm('Remove this item?')) return;
-  menuData = menuData.filter(i => i.id !== id);
-  saveMenu(); renderAdminList(); renderMenu();
-  if (firebaseOK && firebaseDB) firebaseDB.ref('menu/' + id).remove().catch(e => console.warn(e));
-  showToast('Item removed', 'success');
-}
-
-function startEditItem(id)  {
-  document.getElementById('adm-item-display-' + id).style.display = 'none';
-  document.getElementById('adm-item-edit-' + id).style.display    = 'block';
-}
-function cancelEditItem(id) {
-  document.getElementById('adm-item-display-' + id).style.display = 'flex';
-  document.getElementById('adm-item-edit-' + id).style.display    = 'none';
-}
-
-async function saveEditItem(id) {
-  const nameVal  = document.getElementById('adm-edit-name-'  + id).value.trim();
-  const priceVal = parseFloat(document.getElementById('adm-edit-price-' + id).value);
-  const descVal  = document.getElementById('adm-edit-desc-'  + id).value.trim();
-  const catVal   = document.getElementById('adm-edit-cat-'   + id).value;
-  const imgInput = document.getElementById('adm-edit-img-input-' + id);
-
-  if (!nameVal)            { showToast('Name cannot be empty', 'error'); return; }
-  if (!priceVal || priceVal < 1) { showToast('Enter a valid price', 'error'); return; }
-
-  const item = menuData.find(i => i.id === id);
-  if (!item) return;
-
-  item.name  = nameVal;
-  item.price = priceVal;
-  item.desc  = descVal;
-  item.cat   = catVal;
-
-  // Priority: uploaded file base64 > URL > existing
-  if (imgInput && imgInput._base64) {
-    item.img = imgInput._base64;
-  } else if (imgInput && imgInput._urlImg) {
-    item.img = imgInput._urlImg;
+function adminDeleteItem(itemId) {
+  if (!confirm('Delete this item?')) return;
+  menuData = menuData.filter(i => i.id !== itemId);
+  saveMenu();
+  renderMenu();
+  renderAdminList();
+  if (firebaseOK && firebaseDB) {
+    firebaseDB.ref('menu/' + itemId).remove().catch(e => console.warn('Delete item:', e));
   }
+  showToast('Item deleted', 'success');
+}
 
-  saveMenu(); saveMenuItemToFirebase(item); renderAdminList(); renderMenu();
-  showToast('Item updated!', 'success');
+function startEditItem(itemId) {
+  // Close any other open edit forms
+  document.querySelectorAll('[id^="adm-item-edit-"]').forEach(el => {
+    if (el.id !== 'adm-item-edit-' + itemId) el.style.display = 'none';
+  });
+  const form = document.getElementById('adm-item-edit-' + itemId);
+  if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+function cancelEditItem(itemId) {
+  const form = document.getElementById('adm-item-edit-' + itemId);
+  if (form) form.style.display = 'none';
+}
+
+function saveEditItem(itemId) {
+  const item    = menuData.find(i => i.id === itemId);
+  if (!item) return;
+  const nameEl  = document.getElementById('adm-edit-name-'  + itemId);
+  const priceEl = document.getElementById('adm-edit-price-' + itemId);
+  const catEl   = document.getElementById('adm-edit-cat-'   + itemId);
+  const descEl  = document.getElementById('adm-edit-desc-'  + itemId);
+  const preview = document.getElementById('adm-edit-img-preview-' + itemId);
+  const name  = nameEl  ? nameEl.value.trim()         : item.name;
+  const price = priceEl ? parseInt(priceEl.value, 10) : item.price;
+  const cat   = catEl   ? catEl.value                 : item.cat;
+  const desc  = descEl  ? descEl.value.trim()         : item.desc;
+  if (!name)  { showToast('Name required', 'error');    return; }
+  if (!price) { showToast('Valid price required', 'error'); return; }
+  item.name  = name;
+  item.price = price;
+  item.cat   = cat;
+  item.desc  = desc;
+  if (preview && preview.dataset.pending) {
+    item.img = preview.dataset.pending;
+    delete preview.dataset.pending;
+  }
+  saveMenu();
+  saveMenuItemToFirebase(item);
+  renderMenu();
+  renderAdminList();
+  showToast('Saved!', 'success');
 }
 
 function renderAdminList() {
+  const wrap    = document.getElementById('adm-items-list');
   const countEl = document.getElementById('adm-count');
+  if (!wrap) return;
   if (countEl) countEl.textContent = menuData.length;
-  const catOptions = categories.map(c => `<option value="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</option>`).join('');
-  const list = document.getElementById('adm-items-list');
-  if (!list) return;
-
-  list.innerHTML = menuData.map(item => {
+  if (!menuData.length) {
+    wrap.innerHTML = `<p class="text-muted small text-center py-3">No menu items yet.</p>`;
+    return;
+  }
+  const catOpts = categories.map(c => `<option value="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</option>`).join('');
+  wrap.innerHTML = menuData.map(item => {
     const imgSrc   = getItemImage(item);
     const fallback = CATEGORY_IMAGES[item.cat] || CATEGORY_IMAGES.pizza;
     const safeName = item.name.replace(/"/g, '&quot;');
-    const safeDesc = item.desc.replace(/"/g, '&quot;');
-    const catOpts  = catOptions.replace(`value="${item.cat}"`, `value="${item.cat}" selected`);
+    const safeDesc = (item.desc || '').replace(/"/g, '&quot;');
+    const catOptsSelected = categories.map(c =>
+      `<option value="${c}"${c === item.cat ? ' selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`
+    ).join('');
     return `
-    <div class="adm-item" id="adm-item-wrap-${item.id}">
-      <!-- Display row -->
-      <div id="adm-item-display-${item.id}" style="display:flex;align-items:center;gap:10px;width:100%;">
-        <img src="${imgSrc}" onerror="this.src='${fallback}'"
-          style="width:48px;height:48px;object-fit:cover;border-radius:10px;flex-shrink:0;border:1px solid #eee;">
-        <div class="adm-item-info" style="flex:1;min-width:0;">
-          <div class="adm-item-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.name}</div>
-          <div class="adm-item-meta">
-            <span class="cat-badge">${item.cat}</span>
-            ${item.desc ? `<span class="ms-1 small text-muted">${item.desc.slice(0,28)}${item.desc.length>28?'…':''}</span>` : ''}
-          </div>
+    <div class="adm-item-row adm-item" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;">
+      <img src="${imgSrc}" onerror="this.src='${fallback}'"
+        style="width:48px;height:48px;object-fit:cover;border-radius:10px;flex-shrink:0;border:1px solid #eee;">
+      <div class="adm-item-info" style="flex:1;min-width:0;">
+        <div class="adm-item-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.name}</div>
+        <div class="adm-item-meta">
+          <span class="cat-badge">${item.cat}</span>
+          ${item.desc ? `<span class="ms-1 small text-muted">${item.desc.slice(0,28)}${item.desc.length>28?'…':''}</span>` : ''}
         </div>
-        <span class="adm-item-price" style="flex-shrink:0;">₹${item.price}</span>
-        <button onclick="startEditItem(${item.id})"   class="adm-edit-btn" style="flex-shrink:0;"><i class="bi bi-pencil-fill"></i></button>
-        <button onclick="adminDeleteItem(${item.id})" class="adm-del-btn" style="flex-shrink:0;"><i class="bi bi-trash3-fill"></i></button>
       </div>
+      <span class="adm-item-price" style="flex-shrink:0;">₹${item.price}</span>
+      <button onclick="startEditItem(${item.id})"   class="adm-edit-btn" style="flex-shrink:0;"><i class="bi bi-pencil-fill"></i></button>
+      <button onclick="adminDeleteItem(${item.id})" class="adm-del-btn" style="flex-shrink:0;"><i class="bi bi-trash3-fill"></i></button>
       <!-- Edit form -->
       <div id="adm-item-edit-${item.id}" style="display:none;width:100%;padding-top:12px;border-top:1px dashed #eee;margin-top:8px;">
         <div class="row g-2">
@@ -899,7 +967,7 @@ function renderAdminList() {
           </div>
           <div class="col-6">
             <label class="form-label small fw-bold mb-1">Category</label>
-            <select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOpts}</select>
+            <select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOptsSelected}</select>
           </div>
           <div class="col-12">
             <label class="form-label small fw-bold mb-1">Description</label>
@@ -917,7 +985,6 @@ function renderAdminList() {
               </label>
               <span class="small text-muted">JPG/PNG/WEBP · Auto-compressed</span>
             </div>
-            <!-- URL image option -->
             <div style="display:flex;gap:6px;align-items:center;">
               <input type="text" id="adm-edit-url-input-${item.id}" class="form-control form-control-sm"
                 placeholder="Or paste image URL (https://...)" style="flex:1;">
@@ -1138,7 +1205,7 @@ if ('serviceWorker' in navigator) {
         }
       });
     })
-    .catch(err => console.warn('FCM SW registration failed (needs HTTPS):', err));
+    .catch(err => console.warn('SW registration failed (needs HTTPS):', err));
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
@@ -1146,8 +1213,13 @@ refreshMenuTabs();
 renderMenu();
 updateCartUI();
 refreshAdminCatDropdown();
+// Call updateNotifStatus once DOM is ready to set the initial button state
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initFirebase);
+  document.addEventListener('DOMContentLoaded', () => {
+    updateNotifStatus();
+    initFirebase();
+  });
 } else {
+  updateNotifStatus();
   initFirebase();
 }
