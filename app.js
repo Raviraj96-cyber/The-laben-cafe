@@ -56,7 +56,6 @@ const DEFAULT_MENU = [
   { id:21, name:'Cheese Chilli Maggi',                desc:'Spicy chilli and melted cheese Maggi',             price:100, cat:'maggi'    },
 ];
 
-// ===== DEFAULT CATEGORIES =====
 const DEFAULT_CATEGORIES = ['coffee','fries','sandwich','pizza','burger','maggi'];
 
 // ===== STATE =====
@@ -70,7 +69,7 @@ let adminTab   = 'orders';
 let upiPaymentConfirmed = false;
 let firebaseDB = null;
 let firebaseOK = false;
-let notifPermission = false;
+let swRegistration = null;
 let seenOrderIds   = new Set(orders.map(o => o.id));
 
 function saveMenu()       { localStorage.setItem('laben_menu',       JSON.stringify(menuData));   }
@@ -91,39 +90,106 @@ function showToast(msg, type) {
     'font-family:Poppins,sans-serif;white-space:nowrap;transition:opacity .4s;';
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 3500);
+  setTimeout(() => { t.style.opacity='0'; setTimeout(()=>t.remove(),400); }, 3500);
 }
 
-// ===== NOTIFICATIONS =====
-function requestNotificationPermission() {
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'granted') { notifPermission = true; return; }
-  if (Notification.permission !== 'denied') {
-    Notification.requestPermission().then(p => {
-      notifPermission = p === 'granted';
-      if (notifPermission) showToast('🔔 Notifications enabled!', 'success');
+// ===== SERVICE WORKER REGISTRATION =====
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) { console.warn('SW not supported'); return null; }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js', { scope:'/' });
+    swRegistration = reg;
+    console.log('✅ SW registered');
+
+    // When user taps notification → open admin panel
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data && e.data.type === 'OPEN_ADMIN') {
+        const adminEl = document.getElementById('adminPanel');
+        if (adminEl) new bootstrap.Offcanvas(adminEl).show();
+      }
     });
+    return reg;
+  } catch(err) {
+    console.error('❌ SW failed:', err);
+    return null;
   }
 }
 
+// ===== NOTIFICATIONS =====
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    showToast('❌ Not supported in this browser', 'error');
+    updateNotifStatus(); return false;
+  }
+  let perm = Notification.permission;
+  if (perm === 'default') perm = await Notification.requestPermission();
+
+  if (perm === 'granted') {
+    showToast('🔔 Notifications ON! You will get alerts for new orders.', 'success');
+    if (!swRegistration) await registerServiceWorker();
+    updateNotifStatus(); return true;
+  } else {
+    showToast('❌ Denied. Enable notifications in your phone/browser settings.', 'error');
+    updateNotifStatus(); return false;
+  }
+}
+
+// This sends a REAL mobile notification — shows on lock screen like WhatsApp
 function sendOrderNotification(order) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  try {
-    new Notification('🛎️ New Order! — #' + order.id, {
-      body: '👤 ' + order.name + '\n📱 ' + order.phone + '\n💰 ₹' + order.total + ' via ' + order.payment,
-      icon: '',
-      tag: order.id,
-    });
-  } catch(e) { console.warn('Notification failed:', e); }
+
+  const title = '🛎️ New Order! #' + order.id;
+  const opts  = {
+    body:    '👤 ' + order.name + '\n💰 ₹' + order.total + ' via ' + order.payment + '\n📍 ' + order.address,
+    icon:    '/icon-192.png',
+    badge:   '/icon-72.png',
+    tag:     'laben-order-' + order.id,
+    vibrate: [300, 100, 300, 100, 300],
+    requireInteraction: true,
+    data:    { url:'/', orderId: order.id },
+    actions: [
+      { action:'open',    title:'👀 View Order' },
+      { action:'dismiss', title:'✕ Dismiss'     }
+    ]
+  };
+
+  // Use SW registration — this is the method that shows on home screen / lock screen
+  if (swRegistration) {
+    swRegistration.showNotification(title, opts);
+  } else {
+    // Fallback basic
+    try { new Notification(title, { body: opts.body }); } catch(e) {}
+  }
+}
+
+function updateNotifStatus() {
+  const el  = document.getElementById('notif-status-text');
+  const btn = document.getElementById('notif-enable-btn');
+  if (!el) return;
+  if (!('Notification' in window)) {
+    el.innerHTML = '❌ Not supported in this browser';
+    el.style.color = '#dc2626';
+    if (btn) btn.style.display = 'none';
+  } else if (Notification.permission === 'granted') {
+    el.innerHTML = '✅ <strong>ON</strong> — Alerts will appear on your phone for every new order';
+    el.style.color = '#16a34a';
+    if (btn) btn.style.display = 'none';
+  } else if (Notification.permission === 'denied') {
+    el.innerHTML = '❌ <strong>Blocked</strong> — Go to Phone Settings → Browser → Notifications → Allow for this site';
+    el.style.color = '#dc2626';
+    if (btn) { btn.style.display=''; btn.textContent='⚙️ How to Enable'; }
+  } else {
+    el.innerHTML = '🔔 Tap <strong>Enable</strong> to get order alerts on your phone like WhatsApp';
+    el.style.color = '#d97706';
+    if (btn) { btn.style.display=''; btn.textContent='🔔 Enable Notifications'; }
+  }
 }
 
 // ===== FIREBASE INIT =====
 function initFirebase() {
   try {
     if (typeof firebase === 'undefined') {
-      console.warn('⚠️ Firebase SDK not loaded');
-      showToast('⚠️ Firebase SDK missing — check index.html script tags', 'warning');
-      return;
+      showToast('⚠️ Firebase SDK missing — check index.html', 'warning'); return;
     }
     const cfg = {
       apiKey:            "AIzaSyAQ_8cq9DWzXb5bgl2SpY5xI5TYKd-6dfA",
@@ -137,86 +203,79 @@ function initFirebase() {
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     firebaseDB = firebase.database();
     firebaseOK = true;
-    console.log('✅ Firebase initialized');
+    console.log('✅ Firebase OK');
     showToast('🔥 Firebase connected!', 'success');
 
-    // Realtime sync orders
+    // Real-time order listener
     firebaseDB.ref('orders').on('value', snapshot => {
       const data = snapshot.val();
-      if (data) {
-        const fbArr = Object.entries(data)
-          .map(([k, v]) => ({ ...v, _fbKey: k }))
-          .sort((a, b) => (b.timestamp||0) - (a.timestamp||0));
+      if (!data) return;
+      const fbArr = Object.entries(data)
+        .map(([k,v]) => ({...v, _fbKey:k}))
+        .sort((a,b) => (b.timestamp||0)-(a.timestamp||0));
 
-        let hasNew = false;
-        fbArr.forEach(fbO => {
-          const local = orders.find(o => o.id === fbO.id);
-          if (!local) {
-            orders.unshift(fbO);
-            // Notify only if it's genuinely new (not first load)
-            if (seenOrderIds.size > 0 && !seenOrderIds.has(fbO.id)) {
-              sendOrderNotification(fbO);
-              hasNew = true;
-            }
-            seenOrderIds.add(fbO.id);
-          } else {
-            local.status = fbO.status;
-            local._fbKey = fbO._fbKey;
+      let hasNew = false;
+      fbArr.forEach(fbO => {
+        const local = orders.find(o => o.id === fbO.id);
+        if (!local) {
+          orders.unshift(fbO);
+          if (seenOrderIds.size > 0 && !seenOrderIds.has(fbO.id)) {
+            sendOrderNotification(fbO); // 🔔 REAL MOBILE NOTIFICATION
+            hasNew = true;
           }
-        });
-        saveOrders();
-        const dash = document.getElementById('admin-dashboard');
-        if (dash && dash.style.display !== 'none') renderOrdersList();
-        if (hasNew) showToast('🛎️ New order received!', 'info');
-      }
+          seenOrderIds.add(fbO.id);
+        } else { local.status=fbO.status; local._fbKey=fbO._fbKey; }
+      });
+
+      saveOrders();
+      const dash = document.getElementById('admin-dashboard');
+      if (dash && dash.style.display!=='none') renderOrdersList();
+      if (hasNew) showToast('🛎️ New order received!', 'info');
     }, err => {
-      console.error('❌ Firebase read error:', err.code, err.message);
-      showToast('❌ Firebase error: ' + err.message, 'error');
+      console.error('❌ Firebase error:', err);
+      showToast('❌ Firebase error: '+err.message, 'error');
     });
 
-    // Sync categories from Firebase
+    // Category sync
     firebaseDB.ref('categories').on('value', snap => {
       const data = snap.val();
       if (data && Array.isArray(data)) {
-        categories = data;
-        saveCategories();
-        refreshMenuTabs();
-        refreshAdminCatDropdown();
+        categories = data; saveCategories();
+        refreshMenuTabs(); refreshAdminCatDropdown();
       }
     });
 
   } catch(e) {
-    console.error('❌ Firebase init failed:', e.message);
-    showToast('⚠️ Firebase init failed: ' + e.message, 'error');
+    console.error('❌ Firebase init failed:', e);
+    showToast('⚠️ Firebase init failed: '+e.message, 'error');
   }
 }
 
 function saveOrderToFirebase(order) {
-  if (!firebaseOK || !firebaseDB) { console.warn('⚠️ Firebase not ready — saved locally'); return; }
+  if (!firebaseOK||!firebaseDB) return;
   firebaseDB.ref('orders').push(order)
-    .then(() => { console.log('✅ Saved to Firebase:', order.id); showToast('✅ Order sent to cloud!', 'success'); })
-    .catch(err => { console.error('❌ Firebase write failed:', err); showToast('❌ Firebase write failed — check DB rules!', 'error'); });
+    .then(()=>showToast('✅ Order sent to cloud!','success'))
+    .catch(()=>showToast('❌ Firebase write failed!','error'));
 }
 
 function saveCategoriesToFirebase() {
-  if (!firebaseOK || !firebaseDB) return;
-  firebaseDB.ref('categories').set(categories).catch(err => console.warn('Firebase cat save error:', err));
+  if (!firebaseOK||!firebaseDB) return;
+  firebaseDB.ref('categories').set(categories).catch(err=>console.warn(err));
 }
 
 // ===== MENU TABS =====
 function refreshMenuTabs() {
   const tabsEl = document.getElementById('menuTabs');
   if (!tabsEl) return;
-  const allCats = ['all', ...categories];
-  tabsEl.innerHTML = allCats.map(cat => {
-    const label = cat === 'all' ? 'All Items' : cat.charAt(0).toUpperCase() + cat.slice(1);
-    const icons = { coffee:'☕', fries:'🍟', sandwich:'🥪', pizza:'🍕', burger:'🍔', maggi:'🍜' };
-    const icon  = icons[cat] ? icons[cat] + ' ' : '';
-    return `<li class="nav-item"><button class="menu-tab${cat === currentCat ? ' active' : ''}" data-cat="${cat}">${icon}${label}</button></li>`;
+  const icons = {coffee:'☕',fries:'🍟',sandwich:'🥪',pizza:'🍕',burger:'🍔',maggi:'🍜'};
+  tabsEl.innerHTML = ['all',...categories].map(cat => {
+    const label = cat==='all' ? 'All Items' : cat.charAt(0).toUpperCase()+cat.slice(1);
+    const icon  = icons[cat] ? icons[cat]+' ' : '';
+    return `<li class="nav-item"><button class="menu-tab${cat===currentCat?' active':''}" data-cat="${cat}">${icon}${label}</button></li>`;
   }).join('');
   tabsEl.querySelectorAll('.menu-tab').forEach(btn => {
     btn.addEventListener('click', () => {
-      tabsEl.querySelectorAll('.menu-tab').forEach(b => b.classList.remove('active'));
+      tabsEl.querySelectorAll('.menu-tab').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
       currentCat = btn.dataset.cat;
       renderMenu();
@@ -231,15 +290,15 @@ function getItemImage(item) {
 
 function renderMenu() {
   const grid  = document.getElementById('menu-grid');
-  const items = currentCat === 'all' ? menuData : menuData.filter(i => i.cat === currentCat);
-  if (items.length === 0) {
-    grid.innerHTML = `<div class="col-12 text-center text-muted py-5"><i class="bi bi-search fs-2 d-block mb-2"></i>No items in this category.</div>`;
+  const items = currentCat==='all' ? menuData : menuData.filter(i=>i.cat===currentCat);
+  if (items.length===0) {
+    grid.innerHTML=`<div class="col-12 text-center text-muted py-5"><i class="bi bi-search fs-2 d-block mb-2"></i>No items in this category.</div>`;
     return;
   }
   grid.innerHTML = items.map(item => {
     const imgSrc   = getItemImage(item);
-    const fallback = CATEGORY_IMAGES[item.cat] || CATEGORY_IMAGES.pizza;
-    const catLabel = item.cat.charAt(0).toUpperCase() + item.cat.slice(1);
+    const fallback = CATEGORY_IMAGES[item.cat]||CATEGORY_IMAGES.pizza;
+    const catLabel = item.cat.charAt(0).toUpperCase()+item.cat.slice(1);
     return `
     <div class="col-6 col-md-4 col-lg-3 fade-in">
       <div class="menu-card">
@@ -263,33 +322,33 @@ function renderMenu() {
 
 // ===== CART =====
 function addToCart(itemId) {
-  const item = menuData.find(i => i.id === itemId);
+  const item = menuData.find(i=>i.id===itemId);
   if (!item) return;
-  const ex = cart.find(c => c.id === itemId);
+  const ex = cart.find(c=>c.id===itemId);
   if (ex) ex.qty++;
-  else cart.push({ id: item.id, name: item.name, price: item.price, qty: 1 });
+  else cart.push({id:item.id,name:item.name,price:item.price,qty:1});
   saveCart(); updateCartUI(); showAddedFeedback(itemId);
 }
 
 function removeFromCart(itemId) {
-  const idx = cart.findIndex(c => c.id === itemId);
-  if (idx === -1) return;
-  if (cart[idx].qty > 1) cart[idx].qty--;
-  else cart.splice(idx, 1);
+  const idx = cart.findIndex(c=>c.id===itemId);
+  if (idx===-1) return;
+  if (cart[idx].qty>1) cart[idx].qty--;
+  else cart.splice(idx,1);
   saveCart(); updateCartUI();
 }
 
-function clearCart() { cart = []; saveCart(); updateCartUI(); }
-function getCartTotal() { return cart.reduce((s, c) => s + c.price * c.qty, 0); }
+function clearCart() { cart=[]; saveCart(); updateCartUI(); }
+function getCartTotal() { return cart.reduce((s,c)=>s+c.price*c.qty,0); }
 
 function updateCartUI() {
-  const totalQty = cart.reduce((s, c) => s + c.qty, 0);
+  const totalQty = cart.reduce((s,c)=>s+c.qty,0);
   document.getElementById('cart-count').textContent = totalQty;
   const list = document.getElementById('cart-items-list');
-  if (cart.length === 0) {
-    list.innerHTML = `<div class="cart-empty"><i class="bi bi-bag-x"></i>Your cart is empty.<br><small class="text-muted">Add items from the menu!</small></div>`;
+  if (cart.length===0) {
+    list.innerHTML=`<div class="cart-empty"><i class="bi bi-bag-x"></i>Your cart is empty.<br><small class="text-muted">Add items from the menu!</small></div>`;
   } else {
-    list.innerHTML = cart.map(c => `
+    list.innerHTML = cart.map(c=>`
       <div class="cart-item-row">
         <div class="cart-item-info">
           <div class="cart-item-name">${c.name}</div>
@@ -300,17 +359,17 @@ function updateCartUI() {
           <span class="qty-num">${c.qty}</span>
           <button class="qty-btn" onclick="addToCart(${c.id})"><i class="bi bi-plus"></i></button>
         </div>
-        <strong style="min-width:52px;text-align:right;color:var(--accent)">₹${c.price * c.qty}</strong>
+        <strong style="min-width:52px;text-align:right;color:var(--accent)">₹${c.price*c.qty}</strong>
       </div>`).join('');
   }
   document.getElementById('cart-total').textContent = getCartTotal();
   const summaryBox = document.getElementById('order-summary-box');
-  if (cart.length === 0) {
-    summaryBox.innerHTML = `<p class="mb-0 text-muted">Your cart is empty. Add items from the menu above.</p>`;
+  if (cart.length===0) {
+    summaryBox.innerHTML=`<p class="mb-0 text-muted">Your cart is empty. Add items from the menu above.</p>`;
   } else {
-    summaryBox.innerHTML = `
+    summaryBox.innerHTML=`
       <strong class="d-block mb-2"><i class="bi bi-bag me-1"></i>Order Summary</strong>
-      ${cart.map(c => `<div class="d-flex justify-content-between"><span>${c.name} × ${c.qty}</span><span>₹${c.price * c.qty}</span></div>`).join('')}
+      ${cart.map(c=>`<div class="d-flex justify-content-between"><span>${c.name} × ${c.qty}</span><span>₹${c.price*c.qty}</span></div>`).join('')}
       <hr class="my-2">
       <div class="d-flex justify-content-between fw-bold"><span>Total</span><span style="color:var(--accent)">₹${getCartTotal()}</span></div>`;
   }
@@ -319,126 +378,116 @@ function updateCartUI() {
 function showAddedFeedback(itemId) {
   const btn = document.querySelector(`.btn-add-cart[onclick="addToCart(${itemId})"]`);
   if (!btn) return;
-  btn.style.background = '#16a34a';
-  btn.innerHTML = '<i class="bi bi-check-lg"></i>';
-  setTimeout(() => { btn.style.background = ''; btn.innerHTML = '<i class="bi bi-plus-lg"></i>'; }, 900);
+  btn.style.background='#16a34a'; btn.innerHTML='<i class="bi bi-check-lg"></i>';
+  setTimeout(()=>{btn.style.background='';btn.innerHTML='<i class="bi bi-plus-lg"></i>';},900);
 }
 
 function scrollToOrder() {
   const oc = bootstrap.Offcanvas.getInstance(document.getElementById('cartPanel'));
   if (oc) oc.hide();
-  setTimeout(() => document.getElementById('order').scrollIntoView({ behavior: 'smooth' }), 300);
+  setTimeout(()=>document.getElementById('order').scrollIntoView({behavior:'smooth'}),300);
 }
 
 // ===== ORDER =====
 function placeOrder(e) {
   e.preventDefault();
-  if (cart.length === 0) { alert('Your cart is empty! Please add some items first.'); return; }
+  if (cart.length===0) { alert('Your cart is empty! Please add some items first.'); return; }
   const payment = document.getElementById('ord-payment').value;
-  if (payment === 'UPI' && !upiPaymentConfirmed) { openUpiModal(getCartTotal()); return; }
+  if (payment==='UPI'&&!upiPaymentConfirmed) { openUpiModal(getCartTotal()); return; }
 
   const name    = document.getElementById('ord-name').value;
   const phone   = document.getElementById('ord-phone').value;
   const address = document.getElementById('ord-address').value;
   const note    = document.getElementById('ord-note').value;
-  const orderId = 'LBN' + Date.now().toString().slice(-6);
-  const timeStr = new Date().toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
+  const orderId = 'LBN'+Date.now().toString().slice(-6);
+  const timeStr = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
 
-  const newOrder = { id:orderId, time:timeStr, timestamp:Date.now(), name, phone, address, payment, note:note||'', items:JSON.parse(JSON.stringify(cart)), total:getCartTotal(), status:'new' };
-  orders.unshift(newOrder);
-  seenOrderIds.add(orderId);
-  saveOrders();
-  saveOrderToFirebase(newOrder);
-  showOrderConfirmation(orderId, name, phone, address, payment, note, getCartTotal());
-  upiPaymentConfirmed = false;
-  clearCart();
+  const newOrder = {id:orderId,time:timeStr,timestamp:Date.now(),name,phone,address,payment,note:note||'',items:JSON.parse(JSON.stringify(cart)),total:getCartTotal(),status:'new'};
+  orders.unshift(newOrder); seenOrderIds.add(orderId);
+  saveOrders(); saveOrderToFirebase(newOrder);
+  showOrderConfirmation(orderId,name,phone,address,payment,note,getCartTotal());
+  upiPaymentConfirmed=false; clearCart();
   document.getElementById('orderForm').reset();
-  document.getElementById('upi-info-hint').style.display = 'none';
+  document.getElementById('upi-info-hint').style.display='none';
 }
 
-function showOrderConfirmation(orderId, name, phone, address, payment, note, total, utrId) {
+function showOrderConfirmation(orderId,name,phone,address,payment,note,total,utrId) {
   const conf = document.getElementById('order-confirmation');
-  conf.style.display = 'block';
-  conf.innerHTML = `
+  conf.style.display='block';
+  conf.innerHTML=`
     <div class="order-success">
-      <i class="bi bi-check-circle-fill me-2"></i>
-      <strong>Order Placed Successfully!</strong><br>
+      <i class="bi bi-check-circle-fill me-2"></i><strong>Order Placed Successfully!</strong><br>
       <span class="small">Order ID: <strong>${orderId}</strong></span><br>
       <span class="small">Name: ${name} | Phone: ${phone}</span><br>
       <span class="small">Delivery to: ${address}</span><br>
       <span class="small">Payment: ${payment} | Total: <strong>₹${total}</strong></span>
-      ${utrId ? `<br><span class="small">UTR/Txn ID: <strong style="font-family:monospace;color:#5f259f">${utrId}</strong></span>` : ''}
-      ${note ? `<br><span class="small">Note: ${note}</span>` : ''}
+      ${utrId?`<br><span class="small">UTR/Txn ID: <strong style="font-family:monospace;color:#5f259f">${utrId}</strong></span>`:''}
+      ${note?`<br><span class="small">Note: ${note}</span>`:''}
       <br><span class="small text-success">We'll call you to confirm your order shortly. 🙏</span>
     </div>`;
-  conf.scrollIntoView({ behavior: 'smooth' });
+  conf.scrollIntoView({behavior:'smooth'});
 }
 
-// ===== ADMIN LOGIN =====
+// ===== ADMIN =====
 function adminLogin() {
   const u = document.getElementById('adm-user').value;
   const p = document.getElementById('adm-pass').value;
-  if (u === 'admin' && p === 'laben123') {
-    document.getElementById('admin-login-wrap').style.display = 'none';
-    document.getElementById('admin-dashboard').style.display  = 'block';
-    requestNotificationPermission();
+  if (u==='admin'&&p==='laben123') {
+    document.getElementById('admin-login-wrap').style.display='none';
+    document.getElementById('admin-dashboard').style.display='block';
+    updateNotifStatus();
     switchAdminTab('orders');
   } else {
-    document.getElementById('adm-err').style.display = 'block';
+    document.getElementById('adm-err').style.display='block';
   }
 }
 
 function adminLogout() {
-  document.getElementById('admin-login-wrap').style.display = 'block';
-  document.getElementById('admin-dashboard').style.display  = 'none';
-  document.getElementById('adm-user').value = '';
-  document.getElementById('adm-pass').value = '';
+  document.getElementById('admin-login-wrap').style.display='block';
+  document.getElementById('admin-dashboard').style.display='none';
+  document.getElementById('adm-user').value='';
+  document.getElementById('adm-pass').value='';
 }
 
 function switchAdminTab(tab) {
-  adminTab = tab;
-  document.querySelectorAll('.adm-tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('adm-tab-' + tab).classList.add('active');
-  document.getElementById('adm-panel-orders').style.display   = tab === 'orders'     ? 'block' : 'none';
-  document.getElementById('adm-panel-menu').style.display     = tab === 'menu'       ? 'block' : 'none';
-  document.getElementById('adm-panel-catmgr').style.display   = tab === 'catmgr'     ? 'block' : 'none';
-  if (tab === 'orders')  renderOrdersList();
-  if (tab === 'menu')    renderAdminList();
-  if (tab === 'catmgr')  renderCategoryManager();
+  adminTab=tab;
+  document.querySelectorAll('.adm-tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('adm-tab-'+tab).classList.add('active');
+  document.getElementById('adm-panel-orders').style.display  = tab==='orders' ?'block':'none';
+  document.getElementById('adm-panel-menu').style.display    = tab==='menu'   ?'block':'none';
+  document.getElementById('adm-panel-catmgr').style.display  = tab==='catmgr' ?'block':'none';
+  if (tab==='orders') renderOrdersList();
+  if (tab==='menu')   renderAdminList();
+  if (tab==='catmgr') renderCategoryManager();
 }
 
 // ===== CATEGORY MANAGER =====
 function refreshAdminCatDropdown() {
   const sel = document.getElementById('adm-cat');
   if (!sel) return;
-  sel.innerHTML = categories.map(c =>
-    `<option value="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</option>`
-  ).join('');
+  sel.innerHTML = categories.map(c=>`<option value="${c}">${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('');
 }
 
 function renderCategoryManager() {
   const wrap = document.getElementById('adm-cat-list');
   if (!wrap) return;
-  if (categories.length === 0) {
-    wrap.innerHTML = `<p class="text-muted small text-center py-3">No categories yet.</p>`;
-    return;
-  }
+  if (categories.length===0) { wrap.innerHTML=`<p class="text-muted small text-center py-3">No categories yet.</p>`; return; }
   wrap.innerHTML = categories.map(cat => {
-    const count = menuData.filter(i => i.cat === cat).length;
+    const count = menuData.filter(i=>i.cat===cat).length;
     return `
     <div class="adm-cat-row" id="cat-row-${cat}">
       <div style="display:flex;align-items:center;gap:8px;flex:1;">
-        <span id="cat-label-${cat}" style="font-weight:600;text-transform:capitalize;">${cat}</span>
+        <span style="font-weight:600;text-transform:capitalize;">${cat}</span>
         <span class="cat-badge">${count} item${count!==1?'s':''}</span>
       </div>
       <div style="display:flex;gap:6px;align-items:center;">
-        <button onclick="startRenomeCat('${cat}')" class="adm-edit-btn" title="Rename"><i class="bi bi-pencil-fill"></i> Rename</button>
-        <button onclick="deleteCategory('${cat}')" class="adm-del-btn" title="Delete"><i class="bi bi-trash3-fill"></i></button>
+        <button onclick="startRenameCat('${cat}')" class="adm-edit-btn"><i class="bi bi-pencil-fill"></i> Rename</button>
+        <button onclick="deleteCategory('${cat}')" class="adm-del-btn"><i class="bi bi-trash3-fill"></i></button>
       </div>
     </div>
-    <div id="cat-rename-${cat}" style="display:none;padding:8px 0;border-top:1px solid #f0f0f0;">
+    <div id="cat-rename-${cat}" style="display:none;padding:8px 0 10px;border-bottom:1px dashed #eee;">
       <div style="display:flex;gap:6px;align-items:center;">
-        <input type="text" id="cat-rename-input-${cat}" value="${cat}" class="form-control form-control-sm" style="max-width:200px;" placeholder="New category name">
+        <input type="text" id="cat-rename-input-${cat}" value="${cat}" class="form-control form-control-sm" style="max-width:200px;">
         <button onclick="saveCategoryRename('${cat}')" class="btn btn-sm" style="background:#e8500a;color:#fff;border:none;border-radius:8px;padding:4px 12px;font-size:12px;">Save</button>
         <button onclick="cancelCatRename('${cat}')" class="btn btn-sm" style="background:#eee;border:none;border-radius:8px;padding:4px 10px;font-size:12px;">✕</button>
       </div>
@@ -446,165 +495,112 @@ function renderCategoryManager() {
   }).join('');
 }
 
-function startRenomeCat(cat) {
-  document.getElementById('cat-rename-' + cat).style.display = 'block';
-  document.getElementById('cat-rename-input-' + cat).focus();
-}
-
-function cancelCatRename(cat) {
-  document.getElementById('cat-rename-' + cat).style.display = 'none';
-}
+function startRenameCat(cat) { document.getElementById('cat-rename-'+cat).style.display='block'; document.getElementById('cat-rename-input-'+cat).focus(); }
+function cancelCatRename(cat) { document.getElementById('cat-rename-'+cat).style.display='none'; }
 
 function saveCategoryRename(oldCat) {
-  const input   = document.getElementById('cat-rename-input-' + oldCat);
-  const newCat  = input.value.trim().toLowerCase().replace(/\s+/g,'');
-  if (!newCat) { showToast('Enter a valid name', 'error'); return; }
-  if (newCat === oldCat) { cancelCatRename(oldCat); return; }
-  if (categories.includes(newCat)) { showToast('Category already exists!', 'warning'); return; }
-
-  // Update categories
-  const idx = categories.indexOf(oldCat);
-  if (idx !== -1) categories[idx] = newCat;
-
-  // Update all menu items with old category
-  menuData.forEach(item => { if (item.cat === oldCat) item.cat = newCat; });
-
-  saveMenu();
-  saveCategories();
-  saveCategoriesToFirebase();
-  refreshMenuTabs();
-  refreshAdminCatDropdown();
-  renderCategoryManager();
-  renderMenu();
-  showToast('Category renamed to "' + newCat + '"', 'success');
+  const input=document.getElementById('cat-rename-input-'+oldCat);
+  const newCat=input.value.trim().toLowerCase().replace(/\s+/g,'');
+  if (!newCat) { showToast('Enter a valid name','error'); return; }
+  if (newCat===oldCat) { cancelCatRename(oldCat); return; }
+  if (categories.includes(newCat)) { showToast('Category already exists!','warning'); return; }
+  const idx=categories.indexOf(oldCat);
+  if (idx!==-1) categories[idx]=newCat;
+  menuData.forEach(item=>{if(item.cat===oldCat)item.cat=newCat;});
+  saveMenu(); saveCategories(); saveCategoriesToFirebase();
+  refreshMenuTabs(); refreshAdminCatDropdown(); renderCategoryManager(); renderMenu();
+  showToast('Renamed to "'+newCat+'"','success');
 }
 
 function addCategory() {
-  const input  = document.getElementById('adm-new-cat-input');
-  const newCat = input.value.trim().toLowerCase().replace(/\s+/g,'');
-  if (!newCat) { showToast('Enter a category name', 'error'); return; }
-  if (categories.includes(newCat)) { showToast('Category already exists!', 'warning'); return; }
+  const input=document.getElementById('adm-new-cat-input');
+  const newCat=input.value.trim().toLowerCase().replace(/\s+/g,'');
+  if (!newCat) { showToast('Enter a category name','error'); return; }
+  if (categories.includes(newCat)) { showToast('Already exists!','warning'); return; }
   categories.push(newCat);
-  saveCategories();
-  saveCategoriesToFirebase();
-  refreshMenuTabs();
-  refreshAdminCatDropdown();
-  renderCategoryManager();
-  input.value = '';
-  showToast('Category "' + newCat + '" added!', 'success');
+  saveCategories(); saveCategoriesToFirebase();
+  refreshMenuTabs(); refreshAdminCatDropdown(); renderCategoryManager();
+  input.value='';
+  showToast('Category "'+newCat+'" added!','success');
 }
 
 function deleteCategory(cat) {
-  const count = menuData.filter(i => i.cat === cat).length;
-  const msg   = count > 0
-    ? `Delete category "${cat}"? It has ${count} item(s). Those items will also be removed!`
-    : `Delete category "${cat}"?`;
-  if (!confirm(msg)) return;
-
-  categories = categories.filter(c => c !== cat);
-  if (count > 0) menuData = menuData.filter(i => i.cat !== cat);
-
-  saveMenu();
-  saveCategories();
-  saveCategoriesToFirebase();
-  refreshMenuTabs();
-  refreshAdminCatDropdown();
-  renderCategoryManager();
-  renderAdminList();
-  renderMenu();
-  showToast('Category deleted!', 'success');
+  const count=menuData.filter(i=>i.cat===cat).length;
+  if (!confirm(count>0?`Delete "${cat}"? ${count} item(s) will also be removed!`:`Delete "${cat}"?`)) return;
+  categories=categories.filter(c=>c!==cat);
+  if (count>0) menuData=menuData.filter(i=>i.cat!==cat);
+  saveMenu(); saveCategories(); saveCategoriesToFirebase();
+  refreshMenuTabs(); refreshAdminCatDropdown(); renderCategoryManager(); renderAdminList(); renderMenu();
+  showToast('Category deleted!','success');
 }
 
-// ===== ADMIN MENU ITEM MANAGEMENT =====
+// ===== ADMIN MENU ITEMS =====
 function adminAddItem() {
-  const name  = document.getElementById('adm-name').value.trim();
-  const price = parseFloat(document.getElementById('adm-price').value);
-  const desc  = document.getElementById('adm-desc').value.trim();
-  const cat   = document.getElementById('adm-cat').value;
-  if (!name || !price) { alert('Please enter item name and price.'); return; }
-  if (!cat) { alert('Please select a category.'); return; }
-  menuData.push({ id: nextId++, name, desc: desc||'', price, cat });
+  const name=document.getElementById('adm-name').value.trim();
+  const price=parseFloat(document.getElementById('adm-price').value);
+  const desc=document.getElementById('adm-desc').value.trim();
+  const cat=document.getElementById('adm-cat').value;
+  if (!name||!price) { alert('Please enter item name and price.'); return; }
+  menuData.push({id:nextId++,name,desc:desc||'',price,cat});
   saveMenu(); renderAdminList(); renderMenu();
-  document.getElementById('adm-name').value  = '';
-  document.getElementById('adm-price').value = '';
-  document.getElementById('adm-desc').value  = '';
-  showToast('Item "' + name + '" added!', 'success');
+  document.getElementById('adm-name').value='';
+  document.getElementById('adm-price').value='';
+  document.getElementById('adm-desc').value='';
+  showToast('"'+name+'" added!','success');
 }
 
 function adminDeleteItem(id) {
-  if (!confirm('Remove this item from the menu?')) return;
-  menuData = menuData.filter(i => i.id !== id);
+  if (!confirm('Remove this item?')) return;
+  menuData=menuData.filter(i=>i.id!==id);
   saveMenu(); renderAdminList(); renderMenu();
-  showToast('Item removed', 'success');
+  showToast('Item removed','success');
 }
 
-// ===== EDIT ITEM NAME / PRICE / DESC =====
 function startEditItem(id) {
-  document.getElementById('adm-item-display-' + id).style.display = 'none';
-  document.getElementById('adm-item-edit-'    + id).style.display = 'block';
+  document.getElementById('adm-item-display-'+id).style.display='none';
+  document.getElementById('adm-item-edit-'+id).style.display='block';
 }
-
 function cancelEditItem(id) {
-  document.getElementById('adm-item-display-' + id).style.display = 'flex';
-  document.getElementById('adm-item-edit-'    + id).style.display = 'none';
+  document.getElementById('adm-item-display-'+id).style.display='flex';
+  document.getElementById('adm-item-edit-'+id).style.display='none';
 }
-
 function saveEditItem(id) {
-  const nameVal  = document.getElementById('adm-edit-name-'  + id).value.trim();
-  const priceVal = parseFloat(document.getElementById('adm-edit-price-' + id).value);
-  const descVal  = document.getElementById('adm-edit-desc-'  + id).value.trim();
-  const catVal   = document.getElementById('adm-edit-cat-'   + id).value;
-
-  if (!nameVal)        { showToast('Name cannot be empty', 'error');     return; }
-  if (!priceVal || priceVal < 1) { showToast('Enter a valid price', 'error'); return; }
-
-  const item = menuData.find(i => i.id === id);
+  const nameVal=document.getElementById('adm-edit-name-'+id).value.trim();
+  const priceVal=parseFloat(document.getElementById('adm-edit-price-'+id).value);
+  const descVal=document.getElementById('adm-edit-desc-'+id).value.trim();
+  const catVal=document.getElementById('adm-edit-cat-'+id).value;
+  if (!nameVal) { showToast('Name cannot be empty','error'); return; }
+  if (!priceVal||priceVal<1) { showToast('Enter a valid price','error'); return; }
+  const item=menuData.find(i=>i.id===id);
   if (!item) return;
-
-  item.name  = nameVal;
-  item.price = priceVal;
-  item.desc  = descVal;
-  item.cat   = catVal;
-
-  saveMenu();
-  renderAdminList();
-  renderMenu();
-  showToast('Item updated!', 'success');
-
-  if (firebaseOK && firebaseDB) {
-    firebaseDB.ref('menu/' + id).set(item).catch(err => console.warn('Firebase menu update:', err));
-  }
+  item.name=nameVal; item.price=priceVal; item.desc=descVal; item.cat=catVal;
+  saveMenu(); renderAdminList(); renderMenu();
+  showToast('Item updated!','success');
+  if (firebaseOK&&firebaseDB) firebaseDB.ref('menu/'+id).set(item).catch(e=>console.warn(e));
 }
 
 function renderAdminList() {
-  document.getElementById('adm-count').textContent = menuData.length;
-  const catOptions = categories.map(c =>
-    `<option value="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</option>`
-  ).join('');
-
-  document.getElementById('adm-items-list').innerHTML = menuData.map(item => `
+  document.getElementById('adm-count').textContent=menuData.length;
+  const catOptions=categories.map(c=>`<option value="${c}">${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('');
+  document.getElementById('adm-items-list').innerHTML = menuData.map(item=>`
     <div class="adm-item" id="adm-item-wrap-${item.id}">
-
-      <!-- DISPLAY ROW -->
       <div id="adm-item-display-${item.id}" style="display:flex;align-items:center;gap:8px;width:100%;">
         <div class="adm-item-info" style="flex:1;">
           <div class="adm-item-name">${item.name}</div>
           <div class="adm-item-meta">
             <span class="cat-badge">${item.cat}</span>
-            ${item.desc ? `<span class="ms-1 small text-muted">${item.desc.slice(0,35)}${item.desc.length>35?'...':''}</span>` : ''}
+            ${item.desc?`<span class="ms-1 small text-muted">${item.desc.slice(0,35)}${item.desc.length>35?'...':''}</span>`:''}
           </div>
         </div>
         <span class="adm-item-price">₹${item.price}</span>
-        <button onclick="startEditItem(${item.id})" class="adm-edit-btn" title="Edit"><i class="bi bi-pencil-fill"></i></button>
-        <button onclick="adminDeleteItem(${item.id})" class="adm-del-btn" title="Delete"><i class="bi bi-trash3-fill"></i></button>
+        <button onclick="startEditItem(${item.id})" class="adm-edit-btn"><i class="bi bi-pencil-fill"></i></button>
+        <button onclick="adminDeleteItem(${item.id})" class="adm-del-btn"><i class="bi bi-trash3-fill"></i></button>
       </div>
-
-      <!-- EDIT FORM -->
       <div id="adm-item-edit-${item.id}" style="display:none;width:100%;padding-top:10px;border-top:1px dashed #eee;margin-top:6px;">
         <div class="row g-2">
           <div class="col-12">
             <label class="form-label small fw-bold mb-1">Item Name</label>
-            <input type="text" id="adm-edit-name-${item.id}" class="form-control form-control-sm" value="${item.name}" placeholder="Item name">
+            <input type="text" id="adm-edit-name-${item.id}" class="form-control form-control-sm" value="${item.name}">
           </div>
           <div class="col-6">
             <label class="form-label small fw-bold mb-1">Price (₹)</label>
@@ -612,11 +608,11 @@ function renderAdminList() {
           </div>
           <div class="col-6">
             <label class="form-label small fw-bold mb-1">Category</label>
-            <select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOptions.replace(`value="${item.cat}"`, `value="${item.cat}" selected`)}</select>
+            <select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOptions.replace(`value="${item.cat}"`,`value="${item.cat}" selected`)}</select>
           </div>
           <div class="col-12">
             <label class="form-label small fw-bold mb-1">Description</label>
-            <input type="text" id="adm-edit-desc-${item.id}" class="form-control form-control-sm" value="${item.desc}" placeholder="Short description">
+            <input type="text" id="adm-edit-desc-${item.id}" class="form-control form-control-sm" value="${item.desc}">
           </div>
           <div class="col-12 d-flex gap-2 mt-1">
             <button onclick="saveEditItem(${item.id})" class="btn btn-sm flex-fill" style="background:#e8500a;color:#fff;border:none;border-radius:8px;">💾 Save Changes</button>
@@ -624,42 +620,32 @@ function renderAdminList() {
           </div>
         </div>
       </div>
-
     </div>`).join('');
 }
 
-// ===== ORDER MANAGEMENT =====
+// ===== ORDERS =====
 function renderOrdersList() {
-  const wrap     = document.getElementById('adm-orders-list');
-  const filter   = (document.getElementById('adm-order-filter')||{}).value || 'all';
-  const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter);
-
-  document.getElementById('adm-orders-count').textContent = orders.length;
-  const newCount = orders.filter(o => o.status === 'new').length;
-  const badge    = document.getElementById('adm-new-badge');
-  badge.textContent   = newCount;
-  badge.style.display = newCount > 0 ? 'inline-block' : 'none';
-
-  const revenue = orders.filter(o => o.status === 'delivered').reduce((s,o) => s+o.total, 0);
-  const statsEl = document.getElementById('adm-order-stats');
-  if (statsEl) statsEl.innerHTML = `
+  const wrap=document.getElementById('adm-orders-list');
+  const filter=(document.getElementById('adm-order-filter')||{}).value||'all';
+  const filtered=filter==='all'?orders:orders.filter(o=>o.status===filter);
+  document.getElementById('adm-orders-count').textContent=orders.length;
+  const newCount=orders.filter(o=>o.status==='new').length;
+  const badge=document.getElementById('adm-new-badge');
+  badge.textContent=newCount; badge.style.display=newCount>0?'inline-block':'none';
+  const revenue=orders.filter(o=>o.status==='delivered').reduce((s,o)=>s+o.total,0);
+  const statsEl=document.getElementById('adm-order-stats');
+  if (statsEl) statsEl.innerHTML=`
     <div class="adm-stat-pill"><i class="bi bi-receipt me-1"></i><strong>${orders.length}</strong> Total</div>
     <div class="adm-stat-pill new-pill"><i class="bi bi-bell me-1"></i><strong>${orders.filter(o=>o.status==='new').length}</strong> New</div>
     <div class="adm-stat-pill prep-pill"><i class="bi bi-fire me-1"></i><strong>${orders.filter(o=>o.status==='preparing').length}</strong> Preparing</div>
     <div class="adm-stat-pill done-pill"><i class="bi bi-check2-circle me-1"></i><strong>₹${revenue}</strong> Earned</div>`;
-
-  if (filtered.length === 0) {
-    wrap.innerHTML = `<div style="text-align:center;padding:2.5rem 1rem;color:var(--muted);font-size:.9rem;"><i class="bi bi-inbox" style="font-size:2.5rem;display:block;margin-bottom:.75rem;opacity:.4;"></i>No orders found.</div>`;
-    return;
-  }
-
-  const sC = { new:'#e8500a', preparing:'#d97706', delivered:'#16a34a' };
-  const sB = { new:'#fff4f0', preparing:'#fffbeb', delivered:'#f0fdf4' };
-  const sL = { new:'🆕 New Order', preparing:'🍳 Preparing', delivered:'✅ Delivered' };
-  const pI = { COD:'💵', UPI:'📱', Card:'💳' };
-
-  wrap.innerHTML = filtered.map(o => {
-    const tot = o.items.reduce((s,it) => s+(it.price*it.qty), 0);
+  if (filtered.length===0) { wrap.innerHTML=`<div style="text-align:center;padding:2.5rem 1rem;color:#999;font-size:.9rem;"><i class="bi bi-inbox" style="font-size:2.5rem;display:block;margin-bottom:.75rem;opacity:.4;"></i>No orders found.</div>`; return; }
+  const sC={new:'#e8500a',preparing:'#d97706',delivered:'#16a34a'};
+  const sB={new:'#fff4f0',preparing:'#fffbeb',delivered:'#f0fdf4'};
+  const sL={new:'🆕 New Order',preparing:'🍳 Preparing',delivered:'✅ Delivered'};
+  const pI={COD:'💵',UPI:'📱',Card:'💳'};
+  wrap.innerHTML=filtered.map(o=>{
+    const tot=o.items.reduce((s,it)=>s+(it.price*it.qty),0);
     return `
     <div class="adm-order-card" id="order-card-${o.id}" style="border-left:4px solid ${sC[o.status]}">
       <div class="adm-order-head">
@@ -678,158 +664,105 @@ function renderOrdersList() {
         </div>
       </div>
       <div class="adm-detail-section">
-        <div class="adm-detail-label"><i class="bi bi-credit-card-fill me-1"></i>Payment Details</div>
+        <div class="adm-detail-label"><i class="bi bi-credit-card-fill me-1"></i>Payment</div>
         <div class="adm-detail-grid">
           <div class="adm-detail-row"><span class="adm-detail-key">Method</span><span class="adm-detail-val"><span class="adm-pay-badge">${pI[o.payment]||'💰'} ${o.payment}</span></span></div>
           <div class="adm-detail-row"><span class="adm-detail-key">Amount</span><span class="adm-detail-val" style="font-size:1.1rem;font-weight:700;color:var(--accent)">₹${o.total}</span></div>
-          ${o.utrId ? `<div class="adm-detail-row"><span class="adm-detail-key">UTR ID</span><span class="adm-detail-val" style="font-family:monospace;font-weight:700;color:#5f259f;">${o.utrId}</span></div>` : ''}
+          ${o.utrId?`<div class="adm-detail-row"><span class="adm-detail-key">UTR</span><span class="adm-detail-val" style="font-family:monospace;font-weight:700;color:#5f259f;">${o.utrId}</span></div>`:''}
         </div>
       </div>
       <div class="adm-detail-section">
-        <div class="adm-detail-label"><i class="bi bi-bag-fill me-1"></i>Order Items</div>
+        <div class="adm-detail-label"><i class="bi bi-bag-fill me-1"></i>Items</div>
         <div class="adm-items-table">
           ${o.items.map(it=>`<div class="adm-item-row"><span class="adm-item-row-name">${it.name}</span><span class="adm-item-row-qty">×${it.qty}</span><span class="adm-item-row-price">₹${it.price*it.qty}</span></div>`).join('')}
           <div class="adm-item-row adm-item-total-row"><span class="adm-item-row-name" style="font-weight:700">Total</span><span class="adm-item-row-qty"></span><span class="adm-item-row-price" style="color:var(--accent);font-weight:700;font-size:1rem">₹${tot}</span></div>
         </div>
       </div>
-      ${o.note ? `<div class="adm-detail-section"><div class="adm-detail-label"><i class="bi bi-chat-left-text-fill me-1"></i>Special Instructions</div><div class="adm-note-box">${o.note}</div></div>` : ''}
+      ${o.note?`<div class="adm-detail-section"><div class="adm-detail-label"><i class="bi bi-chat-left-text-fill me-1"></i>Note</div><div class="adm-note-box">${o.note}</div></div>`:''}
       <div class="adm-order-actions-row">
-        ${o.status==='new'       ? `<button class="adm-status-btn preparing" onclick="updateOrderStatus('${o.id}','preparing')"><i class="bi bi-fire me-1"></i>Start Preparing</button>` : ''}
-        ${o.status==='preparing' ? `<button class="adm-status-btn delivered" onclick="updateOrderStatus('${o.id}','delivered')"><i class="bi bi-check2-circle me-1"></i>Mark Delivered</button>` : ''}
-        ${o.status==='delivered' ? `<span class="adm-done-tag"><i class="bi bi-check-circle-fill me-1"></i>Order Completed</span>` : ''}
-        <button class="adm-del-btn" onclick="deleteOrder('${o.id}')" title="Delete order"><i class="bi bi-trash3"></i> Delete</button>
+        ${o.status==='new'?`<button class="adm-status-btn preparing" onclick="updateOrderStatus('${o.id}','preparing')"><i class="bi bi-fire me-1"></i>Start Preparing</button>`:''}
+        ${o.status==='preparing'?`<button class="adm-status-btn delivered" onclick="updateOrderStatus('${o.id}','delivered')"><i class="bi bi-check2-circle me-1"></i>Mark Delivered</button>`:''}
+        ${o.status==='delivered'?`<span class="adm-done-tag"><i class="bi bi-check-circle-fill me-1"></i>Completed</span>`:''}
+        <button class="adm-del-btn" onclick="deleteOrder('${o.id}')"><i class="bi bi-trash3"></i> Delete</button>
       </div>
     </div>`;
   }).join('');
 }
 
-function updateOrderStatus(orderId, newStatus) {
-  const order = orders.find(o => o.id === orderId);
+function updateOrderStatus(orderId,newStatus) {
+  const order=orders.find(o=>o.id===orderId);
   if (!order) return;
-  order.status = newStatus;
-  saveOrders();
-  renderOrdersList();
-  if (firebaseOK && firebaseDB && order._fbKey) {
-    firebaseDB.ref('orders/' + order._fbKey).update({ status: newStatus })
-      .catch(err => console.warn('Firebase update error:', err.message));
-  }
+  order.status=newStatus; saveOrders(); renderOrdersList();
+  if (firebaseOK&&firebaseDB&&order._fbKey)
+    firebaseDB.ref('orders/'+order._fbKey).update({status:newStatus}).catch(e=>console.warn(e));
 }
 
 function deleteOrder(orderId) {
   if (!confirm('Delete this order?')) return;
-  const order = orders.find(o => o.id === orderId);
-  orders = orders.filter(o => o.id !== orderId);
-  saveOrders();
-  renderOrdersList();
-  if (firebaseOK && firebaseDB && order && order._fbKey) {
-    firebaseDB.ref('orders/' + order._fbKey).remove()
-      .catch(err => console.warn('Firebase delete error:', err.message));
-  }
+  const order=orders.find(o=>o.id===orderId);
+  orders=orders.filter(o=>o.id!==orderId);
+  saveOrders(); renderOrdersList();
+  if (firebaseOK&&firebaseDB&&order&&order._fbKey)
+    firebaseDB.ref('orders/'+order._fbKey).remove().catch(e=>console.warn(e));
 }
 
 function clearAllOrders() {
   if (!confirm('Clear ALL delivered orders?')) return;
-  orders = orders.filter(o => o.status !== 'delivered');
-  saveOrders();
-  renderOrdersList();
+  orders=orders.filter(o=>o.status!=='delivered');
+  saveOrders(); renderOrdersList();
 }
 
-// ===== SCROLL ANIMATIONS =====
+// ===== SCROLL =====
 function observeFadeIn() {
-  const els = document.querySelectorAll('.fade-in');
-  const obs = new IntersectionObserver(entries => {
-    entries.forEach((e, i) => {
-      if (e.isIntersecting) { setTimeout(() => e.target.classList.add('visible'), i * 60); obs.unobserve(e.target); }
+  const els=document.querySelectorAll('.fade-in');
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach((e,i)=>{
+      if(e.isIntersecting){setTimeout(()=>e.target.classList.add('visible'),i*60);obs.unobserve(e.target);}
     });
-  }, { threshold: 0.1 });
-  els.forEach(el => obs.observe(el));
+  },{threshold:0.1});
+  els.forEach(el=>obs.observe(el));
 }
 
-window.addEventListener('scroll', () => {
-  const nav = document.getElementById('mainNav');
-  if (window.scrollY > 50) { nav.style.background = 'rgba(26,20,16,0.98)'; nav.style.boxShadow = '0 2px 20px rgba(0,0,0,0.3)'; }
-  else { nav.style.background = 'rgba(26,20,16,0.95)'; nav.style.boxShadow = 'none'; }
+window.addEventListener('scroll',()=>{
+  const nav=document.getElementById('mainNav');
+  if (window.scrollY>50){nav.style.background='rgba(26,20,16,0.98)';nav.style.boxShadow='0 2px 20px rgba(0,0,0,0.3)';}
+  else{nav.style.background='rgba(26,20,16,0.95)';nav.style.boxShadow='none';}
 });
 
 // ===== UPI =====
-var UPI_ID = "9665539828@ibl", UPI_NAME = "The Laben Cafe";
-
-function handlePaymentChange() {
-  var m = document.getElementById('ord-payment').value;
-  document.getElementById('upi-info-hint').style.display = m === 'UPI' ? 'flex' : 'none';
-  if (m !== 'UPI') upiPaymentConfirmed = false;
-}
-
-function copyUpiId() {
-  navigator.clipboard.writeText(UPI_ID).then(() => showToast('Copied: ' + UPI_ID, 'success'));
-}
-
-function openUpiModal(amount) {
-  document.getElementById('upi-display-amount').textContent = amount;
-  document.getElementById('upi-id-text').textContent        = UPI_ID;
-  var link = 'upi://pay?pa=' + UPI_ID + '&pn=' + encodeURIComponent(UPI_NAME) + '&am=' + amount + '&cu=INR&tn=The%20Laben%20Cafe%20Order';
-  document.getElementById('upi-deep-link').href = link;
-  document.getElementById('upi-qr-img').src     = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(link);
-  var utrInput = document.getElementById('upi-utr-input');
-  if (utrInput) utrInput.value = '';
-  var utrError = document.getElementById('upi-utr-error');
-  if (utrError) utrError.style.display = 'none';
+var UPI_ID="9665539828@ibl",UPI_NAME="The Laben Cafe";
+function handlePaymentChange(){var m=document.getElementById('ord-payment').value;document.getElementById('upi-info-hint').style.display=m==='UPI'?'flex':'none';if(m!=='UPI')upiPaymentConfirmed=false;}
+function copyUpiId(){navigator.clipboard.writeText(UPI_ID).then(()=>showToast('Copied: '+UPI_ID,'success'));}
+function openUpiModal(amount){
+  document.getElementById('upi-display-amount').textContent=amount;
+  document.getElementById('upi-id-text').textContent=UPI_ID;
+  var link='upi://pay?pa='+UPI_ID+'&pn='+encodeURIComponent(UPI_NAME)+'&am='+amount+'&cu=INR&tn=The%20Laben%20Cafe%20Order';
+  document.getElementById('upi-deep-link').href=link;
+  document.getElementById('upi-qr-img').src='https://api.qrserver.com/v1/create-qr-code/?size=180x180&data='+encodeURIComponent(link);
+  var u=document.getElementById('upi-utr-input');if(u)u.value='';
+  var er=document.getElementById('upi-utr-error');if(er)er.style.display='none';
   document.getElementById('upiModal').classList.add('active');
 }
-
-function closeUpiModal() { document.getElementById('upiModal').classList.remove('active'); }
-
-function validateUtrInput() {
-  var i = document.getElementById('upi-utr-input'), e = document.getElementById('upi-utr-error');
-  if (i && e) e.style.display = (i.value.trim().length > 0 && i.value.trim().length < 8) ? 'block' : 'none';
-}
-
-function confirmUpiPayment() {
-  var utrInput = document.getElementById('upi-utr-input');
-  var utrError = document.getElementById('upi-utr-error');
-  var utrValue = utrInput ? utrInput.value.trim() : '';
-
-  if (!utrValue || utrValue.length < 8) {
-    if (utrError) utrError.style.display = 'block';
-    if (utrInput) {
-      utrInput.focus();
-      utrInput.style.borderColor = '#dc2626';
-      utrInput.style.boxShadow   = '0 0 0 3px rgba(220,38,38,.15)';
-      setTimeout(() => { utrInput.style.borderColor = ''; utrInput.style.boxShadow = ''; }, 2500);
-    }
-    return;
-  }
-
-  var name    = document.getElementById('ord-name').value.trim();
-  var phone   = document.getElementById('ord-phone').value.trim();
-  var address = document.getElementById('ord-address').value.trim();
-  if (!name || !phone || !address) {
-    closeUpiModal();
-    alert('Please fill in your Name, Phone, and Address before confirming payment.');
-    return;
-  }
-
+function closeUpiModal(){document.getElementById('upiModal').classList.remove('active');}
+function validateUtrInput(){var i=document.getElementById('upi-utr-input'),e=document.getElementById('upi-utr-error');if(i&&e)e.style.display=(i.value.trim().length>0&&i.value.trim().length<8)?'block':'none';}
+function confirmUpiPayment(){
+  var ui=document.getElementById('upi-utr-input'),ue=document.getElementById('upi-utr-error'),uv=ui?ui.value.trim():'';
+  if(!uv||uv.length<8){if(ue)ue.style.display='block';if(ui){ui.focus();ui.style.borderColor='#dc2626';ui.style.boxShadow='0 0 0 3px rgba(220,38,38,.15)';setTimeout(()=>{ui.style.borderColor='';ui.style.boxShadow='';},2500);}return;}
+  var name=document.getElementById('ord-name').value.trim(),phone=document.getElementById('ord-phone').value.trim(),address=document.getElementById('ord-address').value.trim();
+  if(!name||!phone||!address){closeUpiModal();alert('Please fill Name, Phone, Address first.');return;}
   closeUpiModal();
-  var note    = document.getElementById('ord-note').value;
-  var orderId = 'LBN' + Date.now().toString().slice(-6);
-  var timeStr = new Date().toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
-
-  var newOrder = { id:orderId, time:timeStr, timestamp:Date.now(), name, phone, address, payment:'UPI', utrId:utrValue, note:note||'', items:JSON.parse(JSON.stringify(cart)), total:getCartTotal(), status:'new' };
-  orders.unshift(newOrder);
-  seenOrderIds.add(orderId);
-  saveOrders();
-  saveOrderToFirebase(newOrder);
-
-  showOrderConfirmation(orderId, name, phone, address, 'UPI', note, getCartTotal(), utrValue);
-  clearCart();
-  document.getElementById('orderForm').reset();
-  document.getElementById('upi-info-hint').style.display = 'none';
+  var note=document.getElementById('ord-note').value,orderId='LBN'+Date.now().toString().slice(-6),timeStr=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
+  var newOrder={id:orderId,time:timeStr,timestamp:Date.now(),name,phone,address,payment:'UPI',utrId:uv,note:note||'',items:JSON.parse(JSON.stringify(cart)),total:getCartTotal(),status:'new'};
+  orders.unshift(newOrder);seenOrderIds.add(orderId);saveOrders();saveOrderToFirebase(newOrder);
+  showOrderConfirmation(orderId,name,phone,address,'UPI',note,getCartTotal(),uv);
+  clearCart();document.getElementById('orderForm').reset();document.getElementById('upi-info-hint').style.display='none';
 }
 
 // ===== INIT =====
+registerServiceWorker(); // Start SW for mobile home screen notifications
 refreshMenuTabs();
 renderMenu();
 updateCartUI();
 refreshAdminCatDropdown();
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initFirebase);
+if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',initFirebase);
 else initFirebase();
