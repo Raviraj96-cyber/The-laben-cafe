@@ -1,75 +1,65 @@
-// ===== THE LABEN CAFE - SERVICE WORKER =====
-// This makes notifications appear on mobile home screen like WhatsApp/Instagram
+// =====================================================
+// FIREBASE MESSAGING SERVICE WORKER
+// This file makes notifications arrive even when:
+// - Browser is closed
+// - Phone screen is off
+// - Website tab is closed
+// Exactly like WhatsApp / Instagram notifications
+// =====================================================
 
-const CACHE_NAME = 'laben-cafe-v1';
-const ASSETS = [
-  '/',
-  '/index.html',
-  '/app.js',
-  '/style.css',
-  '/manifest.json'
-];
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-// Install - cache assets
-self.addEventListener('install', e => {
-  self.skipWaiting();
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS).catch(() => {}))
-  );
+firebase.initializeApp({
+  apiKey:            "AIzaSyAQ_8cq9DWzXb5bgl2SpY5xI5TYKd-6dfA",
+  authDomain:        "laben-cafe.firebaseapp.com",
+  databaseURL:       "https://laben-cafe-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "laben-cafe",
+  storageBucket:     "laben-cafe.firebasestorage.app",
+  messagingSenderId: "236045385314",
+  appId:             "1:236045385314:web:a363accd4d0b9f0fe35b3b"
 });
 
-// Activate - clean old caches
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
-  );
-});
+const messaging = firebase.messaging();
 
-// Fetch - serve from cache when offline
-self.addEventListener('fetch', e => {
-  e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request)).catch(() => caches.match('/index.html'))
-  );
-});
+// Handle background messages (when app is closed/browser not open)
+messaging.onBackgroundMessage(function(payload) {
+  console.log('Background message received:', payload);
 
-// ===== PUSH NOTIFICATION HANDLER =====
-// This fires when Firebase sends a push - shows on phone home screen
-self.addEventListener('push', e => {
-  let data = {};
-  try { data = e.data ? e.data.json() : {}; } catch(err) { data = { title: '🛎️ New Order!', body: 'A new order has arrived at The Laben Café!' }; }
+  const data  = payload.data || {};
+  const title = data.title || '🛎️ New Order! — The Laben Café';
+  const body  = data.body  || 'A new order just arrived!';
 
-  const title   = data.title || '🛎️ New Order — The Laben Café';
   const options = {
-    body:    data.body    || 'A new order just came in!',
-    icon:    data.icon    || '/icon-192.png',
-    badge:   data.badge   || '/icon-72.png',
-    tag:     data.tag     || 'laben-order-' + Date.now(),
-    data:    data.data    || { url: '/' },
-    vibrate: [200, 100, 200, 100, 200],
-    sound:   'default',
+    body:    body,
+    icon:    '/icon-192.png',
+    badge:   '/icon-72.png',
+    tag:     data.orderId ? 'order-' + data.orderId : 'laben-order',
+    vibrate: [300, 100, 300, 100, 300],
     requireInteraction: true,
+    data:    { url: '/?openAdmin=1', orderId: data.orderId || '' },
     actions: [
       { action: 'open',    title: '👀 View Order' },
       { action: 'dismiss', title: '✕ Dismiss'     }
     ]
   };
 
-  e.waitUntil(self.registration.showNotification(title, options));
+  return self.registration.showNotification(title, options);
 });
 
-// ===== NOTIFICATION CLICK =====
-self.addEventListener('notificationclick', e => {
-  e.notification.close();
-  if (e.action === 'dismiss') return;
+// Notification click handler
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  if (event.action === 'dismiss') return;
 
-  const url = (e.notification.data && e.notification.data.url) ? e.notification.data.url : '/';
+  const url = (event.notification.data && event.notification.data.url)
+    ? event.notification.data.url : '/?openAdmin=1';
 
-  e.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i];
+        if ('focus' in client) {
           client.postMessage({ type: 'OPEN_ADMIN' });
           return client.focus();
         }
@@ -77,27 +67,4 @@ self.addEventListener('notificationclick', e => {
       if (clients.openWindow) return clients.openWindow(url);
     })
   );
-});
-
-// ===== BACKGROUND SYNC (Firebase order listener via message) =====
-// Main app sends message to SW to show notification when new order comes
-self.addEventListener('message', e => {
-  if (e.data && e.data.type === 'NEW_ORDER') {
-    const order = e.data.order;
-    const title = '🛎️ New Order #' + order.id;
-    const options = {
-      body:    '👤 ' + order.name + '\n💰 ₹' + order.total + ' · ' + order.payment + '\n📍 ' + order.address,
-      icon:    '/icon-192.png',
-      badge:   '/icon-72.png',
-      tag:     'order-' + order.id,
-      vibrate: [300, 100, 300, 100, 300],
-      requireInteraction: true,
-      data:    { url: '/', orderId: order.id },
-      actions: [
-        { action: 'open',    title: '👀 Open Admin' },
-        { action: 'dismiss', title: '✕ Dismiss'     }
-      ]
-    };
-    self.registration.showNotification(title, options);
-  }
 });
