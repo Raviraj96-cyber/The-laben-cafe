@@ -13,7 +13,7 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🔑  PASTE YOUR VAPID KEY HERE  (notifications won't work without it)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const FCM_VAPID_KEY = 'YOUR_VAPID_KEY_HERE';
+const FCM_VAPID_KEY = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek';
 
 // ── Firebase config ───────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
