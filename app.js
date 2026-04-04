@@ -27,7 +27,7 @@
 // 🔑  PASTE YOUR KEYS HERE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const FCM_VAPID_KEY  = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek';
-const FCM_SERVER_KEY = '236045385314'; // Paste Firebase Server Key here for true background push
+const FCM_SERVER_KEY = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek'; // Paste Firebase Server Key here for true background push
 
 // ── Firebase config ───────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
