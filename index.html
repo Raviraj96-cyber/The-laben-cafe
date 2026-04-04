@@ -9,10 +9,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="style.css">
+
+  <!-- ✅ Firebase COMPAT SDK — must be in <head> BEFORE app.js -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
-<!-- Cursor glow effect -->
 <div class="cursor-glow" id="cursorGlow"></div>
 
 <!-- NAVBAR -->
@@ -50,9 +53,7 @@
 <!-- HERO -->
 <section id="home" class="hero-section">
   <div class="hero-overlay"></div>
-  <!-- Floating particles -->
   <div class="hero-particles" id="heroParticles"></div>
-  <!-- Decorative ring -->
   <div class="hero-deco-ring"></div>
   <div class="container h-100 d-flex align-items-center">
     <div class="hero-content text-white">
@@ -60,41 +61,22 @@
       <h1 class="hero-title">The Laben <span class="text-accent">Café</span></h1>
       <p class="hero-sub">Stay strong, stay brewing.<br>Delicious bites, great coffee, real vibes.</p>
       <div class="hero-btns d-flex flex-wrap gap-3 mt-4">
-        <a href="#menu" class="btn btn-primary-custom px-4 py-2">
-          <i class="bi bi-grid-fill me-2"></i>View Menu
-        </a>
-        <a href="#order" class="btn btn-outline-custom px-4 py-2">
-          <i class="bi bi-bag me-2"></i>Order Now
-        </a>
+        <a href="#menu" class="btn btn-primary-custom px-4 py-2"><i class="bi bi-grid-fill me-2"></i>View Menu</a>
+        <a href="#order" class="btn btn-outline-custom px-4 py-2"><i class="bi bi-bag me-2"></i>Order Now</a>
       </div>
     </div>
   </div>
-  <div class="hero-scroll-hint">
-    <span>Scroll to explore</span>
-    <i class="bi bi-chevron-down"></i>
-  </div>
+  <div class="hero-scroll-hint"><span>Scroll to explore</span><i class="bi bi-chevron-down"></i></div>
 </section>
 
 <!-- STATS BAR -->
 <section class="stats-bar">
   <div class="container">
     <div class="row g-0 text-center">
-      <div class="col-6 col-md-3 stat-item reveal delay-1">
-        <div class="stat-number">20+</div>
-        <div class="stat-label">Menu Items</div>
-      </div>
-      <div class="col-6 col-md-3 stat-item reveal delay-2">
-        <div class="stat-number">500+</div>
-        <div class="stat-label">Happy Customers</div>
-      </div>
-      <div class="col-6 col-md-3 stat-item reveal delay-3">
-        <div class="stat-number">6</div>
-        <div class="stat-label">Food Categories</div>
-      </div>
-      <div class="col-6 col-md-3 stat-item reveal delay-4">
-        <div class="stat-number">13hr</div>
-        <div class="stat-label">Open Daily</div>
-      </div>
+      <div class="col-6 col-md-3 stat-item reveal delay-1"><div class="stat-number">20+</div><div class="stat-label">Menu Items</div></div>
+      <div class="col-6 col-md-3 stat-item reveal delay-2"><div class="stat-number">500+</div><div class="stat-label">Happy Customers</div></div>
+      <div class="col-6 col-md-3 stat-item reveal delay-3"><div class="stat-number">6</div><div class="stat-label">Food Categories</div></div>
+      <div class="col-6 col-md-3 stat-item reveal delay-4"><div class="stat-number">13hr</div><div class="stat-label">Open Daily</div></div>
     </div>
   </div>
 </section>
@@ -120,7 +102,7 @@
   </div>
 </section>
 
-<!-- ORDER / CART SECTION -->
+<!-- ORDER SECTION -->
 <section id="order" class="section-pad">
   <div class="container">
     <div class="section-header text-center mb-5 reveal">
@@ -155,8 +137,8 @@
                 <div id="upi-info-hint" class="upi-info-hint" style="display:none;">
                   <span style="font-size:20px;">📱</span>
                   <div style="text-align:left;">
-                    <div style="font-weight:600; font-size:13px; color:#5f259f;">UPI selected</div>
-                    <div style="font-size:12px; color:#666;">QR & pay button will appear after placing order.</div>
+                    <div style="font-weight:600;font-size:13px;color:#5f259f;">UPI selected</div>
+                    <div style="font-size:12px;color:#666;">QR & pay button will appear after placing order.</div>
                   </div>
                 </div>
               </div>
@@ -191,54 +173,14 @@
       <h2 class="section-title">Food <span class="text-accent">Gallery</span></h2>
     </div>
     <div class="row g-3" id="gallery-grid">
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-1">
-        <div class="gallery-item">
-          <img src="https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&q=80" alt="Pizza" class="img-fluid">
-          <div class="gallery-overlay"><span>Pizza</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-2">
-        <div class="gallery-item">
-          <img src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80" alt="Burger" class="img-fluid">
-          <div class="gallery-overlay"><span>Burger</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-3">
-        <div class="gallery-item">
-          <img src="https://tse3.mm.bing.net/th/id/OIP.XYRdLzXxxNaS_ZWH8QE2eQHaIo?rs=1&pid=ImgDetMain&o=7&rm=3">
-          <div class="gallery-overlay"><span>Coffee</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-4">
-        <div class="gallery-item">
-          <img src="https://images.unsplash.com/photo-1585325701956-60dd9c8553bc?w=400&q=80" alt="Fries" class="img-fluid">
-          <div class="gallery-overlay"><span>Fries</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-1">
-        <div class="gallery-item">
-          <img src="https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&q=80" alt="Sandwich" class="img-fluid">
-          <div class="gallery-overlay"><span>Sandwich</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-2">
-        <div class="gallery-item">
-          <img src="https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80" alt="Hot Coffee" class="img-fluid">
-          <div class="gallery-overlay"><span>Hot Coffee</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-3">
-        <div class="gallery-item">
-          <img src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&q=80" alt="Food" class="img-fluid">
-          <div class="gallery-overlay"><span>Specials</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg-3 reveal delay-4">
-        <div class="gallery-item">
-          <img src="https://images.unsplash.com/photo-1554080353-a576cf803bda?w=400&q=80" alt="Café" class="img-fluid">
-          <div class="gallery-overlay"><span>Our Café</span></div>
-        </div>
-      </div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-1"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&q=80" alt="Pizza" class="img-fluid"><div class="gallery-overlay"><span>Pizza</span></div></div></div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-2"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80" alt="Burger" class="img-fluid"><div class="gallery-overlay"><span>Burger</span></div></div></div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-3"><div class="gallery-item"><img src="https://tse3.mm.bing.net/th/id/OIP.XYRdLzXxxNaS_ZWH8QE2eQHaIo?rs=1&pid=ImgDetMain&o=7&rm=3"><div class="gallery-overlay"><span>Coffee</span></div></div></div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-4"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1585325701956-60dd9c8553bc?w=400&q=80" alt="Fries" class="img-fluid"><div class="gallery-overlay"><span>Fries</span></div></div></div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-1"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&q=80" alt="Sandwich" class="img-fluid"><div class="gallery-overlay"><span>Sandwich</span></div></div></div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-2"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80" alt="Hot Coffee" class="img-fluid"><div class="gallery-overlay"><span>Hot Coffee</span></div></div></div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-3"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&q=80" alt="Food" class="img-fluid"><div class="gallery-overlay"><span>Specials</span></div></div></div>
+      <div class="col-6 col-md-4 col-lg-3 reveal delay-4"><div class="gallery-item"><img src="https://images.unsplash.com/photo-1554080353-a576cf803bda?w=400&q=80" alt="Café" class="img-fluid"><div class="gallery-overlay"><span>Our Café</span></div></div></div>
     </div>
   </div>
 </section>
@@ -253,48 +195,14 @@
         <p class="text-muted mb-3">Welcome to The Laben Café — your neighbourhood spot for great food, cold brews, and warm vibes. We believe every meal should feel like a celebration, whether it's a quick snack or a full feast.</p>
         <p class="text-muted mb-4">Located in the heart of Akluj, we serve freshly prepared food every single day — from crispy fries to cheesy pizzas, sizzling Maggi to signature burgers. Everything is made to order, with love.</p>
         <div class="row g-3">
-          <div class="col-6 reveal delay-1">
-            <div class="about-feature">
-              <i class="bi bi-fire text-accent fs-4"></i>
-              <div>
-                <strong>Made Fresh</strong>
-                <p class="small text-muted mb-0">Every order, every time</p>
-              </div>
-            </div>
-          </div>
-          <div class="col-6 reveal delay-2">
-            <div class="about-feature">
-              <i class="bi bi-geo-alt-fill text-accent fs-4"></i>
-              <div>
-                <strong>Delivery Available</strong>
-                <p class="small text-muted mb-0">Order online, we deliver</p>
-              </div>
-            </div>
-          </div>
-          <div class="col-6 reveal delay-3">
-            <div class="about-feature">
-              <i class="bi bi-clock-fill text-accent fs-4"></i>
-              <div>
-                <strong>Open Daily</strong>
-                <p class="small text-muted mb-0">9 AM – 10 PM</p>
-              </div>
-            </div>
-          </div>
-          <div class="col-6 reveal delay-4">
-            <div class="about-feature">
-              <i class="bi bi-heart-fill text-accent fs-4"></i>
-              <div>
-                <strong>Made with Love</strong>
-                <p class="small text-muted mb-0">Quality you can taste</p>
-              </div>
-            </div>
-          </div>
+          <div class="col-6 reveal delay-1"><div class="about-feature"><i class="bi bi-fire text-accent fs-4"></i><div><strong>Made Fresh</strong><p class="small text-muted mb-0">Every order, every time</p></div></div></div>
+          <div class="col-6 reveal delay-2"><div class="about-feature"><i class="bi bi-geo-alt-fill text-accent fs-4"></i><div><strong>Delivery Available</strong><p class="small text-muted mb-0">Order online, we deliver</p></div></div></div>
+          <div class="col-6 reveal delay-3"><div class="about-feature"><i class="bi bi-clock-fill text-accent fs-4"></i><div><strong>Open Daily</strong><p class="small text-muted mb-0">9 AM – 10 PM</p></div></div></div>
+          <div class="col-6 reveal delay-4"><div class="about-feature"><i class="bi bi-heart-fill text-accent fs-4"></i><div><strong>Made with Love</strong><p class="small text-muted mb-0">Quality you can taste</p></div></div></div>
         </div>
       </div>
       <div class="col-lg-6 reveal-right">
-        <div class="about-img-grid">
-          <img src="laben.jpeg" alt="Café" class="img-fluid rounded-4 shadow">
-        </div>
+        <div class="about-img-grid"><img src="laben.jpeg" alt="Café" class="img-fluid rounded-4 shadow"></div>
       </div>
     </div>
   </div>
@@ -308,32 +216,10 @@
       <h2 class="section-title text-white">Find <span class="text-accent">Us</span></h2>
     </div>
     <div class="row g-4 justify-content-center">
-      <div class="col-md-4 reveal delay-1">
-        <div class="contact-card text-center">
-          <div class="contact-icon"><i class="bi bi-geo-alt-fill"></i></div>
-          <h5>Our Location</h5>
-          <p class="text-muted-light">Near Pratapsingh Chowk,<br>Below Titan Showroom, Akluj</p>
-        </div>
-      </div>
-      <div class="col-md-4 reveal delay-2">
-        <div class="contact-card text-center">
-          <div class="contact-icon"><i class="bi bi-telephone-fill"></i></div>
-          <h5>Call Us</h5>
-          <p class="text-muted-light">+91 98765 43210</p>
-          <a href="tel:+919876543210" class="btn btn-sm btn-outline-accent mt-2">Call Now</a>
-        </div>
-      </div>
-      <div class="col-md-4 reveal delay-3">
-        <div class="contact-card text-center">
-          <div class="contact-icon"><i class="bi bi-instagram"></i></div>
-          <h5>Follow Us</h5>
-          <p class="text-muted-light">@the_laben_cafe</p>
-          <a href="https://instagram.com/the_laben_cafe" target="_blank" class="btn btn-sm btn-outline-accent mt-2">Instagram</a>
-        </div>
-      </div>
-      <div class="col-12 text-center mt-2 reveal">
-        <p class="text-muted-light"><i class="bi bi-clock me-2"></i>Open Daily: 9:00 AM – 10:00 PM</p>
-      </div>
+      <div class="col-md-4 reveal delay-1"><div class="contact-card text-center"><div class="contact-icon"><i class="bi bi-geo-alt-fill"></i></div><h5>Our Location</h5><p class="text-muted-light">Near Pratapsingh Chowk,<br>Below Titan Showroom, Akluj</p></div></div>
+      <div class="col-md-4 reveal delay-2"><div class="contact-card text-center"><div class="contact-icon"><i class="bi bi-telephone-fill"></i></div><h5>Call Us</h5><p class="text-muted-light">+91 98765 43210</p><a href="tel:+919876543210" class="btn btn-sm btn-outline-accent mt-2">Call Now</a></div></div>
+      <div class="col-md-4 reveal delay-3"><div class="contact-card text-center"><div class="contact-icon"><i class="bi bi-instagram"></i></div><h5>Follow Us</h5><p class="text-muted-light">@the_laben_cafe</p><a href="https://instagram.com/the_laben_cafe" target="_blank" class="btn btn-sm btn-outline-accent mt-2">Instagram</a></div></div>
+      <div class="col-12 text-center mt-2 reveal"><p class="text-muted-light"><i class="bi bi-clock me-2"></i>Open Daily: 9:00 AM – 10:00 PM</p></div>
     </div>
   </div>
 </section>
@@ -343,7 +229,7 @@
   <p class="mb-0">© 2026 <strong>The Laben Café</strong> · Akluj, Maharashtra · Made with ❤️</p>
 </footer>
 
-<!-- ===================== CART OFFCANVAS ===================== -->
+<!-- CART OFFCANVAS -->
 <div class="offcanvas offcanvas-end" id="cartPanel">
   <div class="offcanvas-header border-bottom">
     <h5 class="offcanvas-title"><i class="bi bi-bag-fill text-accent me-2"></i>Your Cart</h5>
@@ -353,20 +239,15 @@
     <div id="cart-items-list" class="flex-grow-1"></div>
     <div class="cart-footer mt-3 border-top pt-3">
       <div class="d-flex justify-content-between fw-bold fs-5 mb-3">
-        <span>Total</span>
-        <span class="text-accent">₹<span id="cart-total">0</span></span>
+        <span>Total</span><span class="text-accent">₹<span id="cart-total">0</span></span>
       </div>
-      <button class="btn btn-primary-custom w-100" onclick="scrollToOrder()">
-        <i class="bi bi-arrow-right-circle me-2"></i>Proceed to Order
-      </button>
-      <button class="btn btn-outline-danger w-100 mt-2" onclick="clearCart()">
-        <i class="bi bi-trash me-2"></i>Clear Cart
-      </button>
+      <button class="btn btn-primary-custom w-100" onclick="scrollToOrder()"><i class="bi bi-arrow-right-circle me-2"></i>Proceed to Order</button>
+      <button class="btn btn-outline-danger w-100 mt-2" onclick="clearCart()"><i class="bi bi-trash me-2"></i>Clear Cart</button>
     </div>
   </div>
 </div>
 
-<!-- ===================== ADMIN OFFCANVAS ===================== -->
+<!-- ADMIN OFFCANVAS -->
 <div class="offcanvas offcanvas-end admin-offcanvas" id="adminPanel" style="width:min(560px,100vw)">
   <div class="offcanvas-header border-bottom">
     <h5 class="offcanvas-title"><i class="bi bi-gear-fill text-accent me-2"></i>Admin Panel</h5>
@@ -390,9 +271,7 @@
           <i class="bi bi-receipt me-1"></i>Orders
           <span id="adm-new-badge" class="adm-new-badge" style="display:none;">0</span>
         </button>
-        <button class="adm-tab-btn" id="adm-tab-menu" onclick="switchAdminTab('menu')">
-          <i class="bi bi-grid me-1"></i>Menu Items
-        </button>
+        <button class="adm-tab-btn" id="adm-tab-menu" onclick="switchAdminTab('menu')"><i class="bi bi-grid me-1"></i>Menu Items</button>
       </div>
       <div id="adm-panel-orders">
         <div id="adm-order-stats" class="adm-stats-row mb-3"></div>
@@ -400,10 +279,7 @@
           <span class="small text-muted">Total Orders: <strong id="adm-orders-count">0</strong></span>
           <div class="d-flex gap-2 align-items-center">
             <select id="adm-order-filter" class="form-select form-select-sm" style="width:auto;" onchange="renderOrdersList()">
-              <option value="all">All</option>
-              <option value="new">New</option>
-              <option value="preparing">Preparing</option>
-              <option value="delivered">Delivered</option>
+              <option value="all">All</option><option value="new">New</option><option value="preparing">Preparing</option><option value="delivered">Delivered</option>
             </select>
             <button class="btn btn-sm btn-outline-danger" onclick="clearAllOrders()">Clear Delivered</button>
           </div>
@@ -419,12 +295,8 @@
             <div class="col-12"><input type="text" id="adm-desc" class="form-control form-control-sm" placeholder="Short description (optional)"></div>
             <div class="col-8">
               <select id="adm-cat" class="form-select form-select-sm">
-                <option value="coffee">Coffee</option>
-                <option value="fries">Fries</option>
-                <option value="sandwich">Sandwich</option>
-                <option value="pizza">Pizza</option>
-                <option value="burger">Burger</option>
-                <option value="maggi">Maggi</option>
+                <option value="coffee">Coffee</option><option value="fries">Fries</option><option value="sandwich">Sandwich</option>
+                <option value="pizza">Pizza</option><option value="burger">Burger</option><option value="maggi">Maggi</option>
               </select>
             </div>
             <div class="col-4"><button class="btn btn-primary-custom btn-sm w-100" onclick="adminAddItem()">+ Add</button></div>
@@ -437,81 +309,56 @@
   </div>
 </div>
 
+<!-- ✅ Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- ✅ app.js — Firebase compat SDK already loaded above in <head> -->
 <script src="app.js"></script>
 
-<!-- ===================== UPI PAYMENT MODAL ===================== -->
+<!-- UPI MODAL -->
 <div class="upi-modal-overlay" id="upiModal">
   <div class="upi-modal-box">
     <button class="upi-close-btn" onclick="closeUpiModal()">✕</button>
-    <div style="font-size:36px; margin-bottom:6px;">📱</div>
-    <h5 style="font-weight:700; margin-bottom:2px;">Pay via UPI</h5>
-    <p style="font-size:13px; color:#888; margin-bottom:4px;">Order Total</p>
+    <div style="font-size:36px;margin-bottom:6px;">📱</div>
+    <h5 style="font-weight:700;margin-bottom:2px;">Pay via UPI</h5>
+    <p style="font-size:13px;color:#888;margin-bottom:4px;">Order Total</p>
     <div class="upi-amount">₹<span id="upi-display-amount">0</span></div>
     <div class="upi-id-box">
       <span>UPI ID: <span id="upi-id-text"></span></span>
       <button onclick="copyUpiId()"><i class="bi bi-clipboard"></i> Copy</button>
     </div>
-    <p style="font-size:12px; color:#888; margin-bottom:6px;">Scan with any UPI app</p>
+    <p style="font-size:12px;color:#888;margin-bottom:6px;">Scan with any UPI app</p>
     <img id="upi-qr-img" class="upi-qr-img" src="" alt="UPI QR Code">
-    <div class="upi-apps">
-      <span>GPay</span><span>PhonePe</span><span>Paytm</span><span>BHIM</span>
-    </div>
-    <a id="upi-deep-link" href="#" class="upi-pay-btn">
-      <span style="font-size:18px;">📲</span> Open UPI App to Pay
-    </a>
+    <div class="upi-apps"><span>GPay</span><span>PhonePe</span><span>Paytm</span><span>BHIM</span></div>
+    <a id="upi-deep-link" href="#" class="upi-pay-btn"><span style="font-size:18px;">📲</span> Open UPI App to Pay</a>
     <p class="upi-note">↑ Works on mobile &nbsp;·&nbsp; Use QR on desktop</p>
 
-    <!-- ===== UTR VERIFICATION SECTION (NEW) ===== -->
+    <!-- UTR VERIFICATION -->
     <div class="upi-utr-section">
-      <div class="upi-utr-label">
-        <i class="bi bi-shield-check-fill"></i>
-        Enter UTR / Transaction ID to confirm payment
-      </div>
-      <div class="upi-utr-hint">
-        After paying, open your UPI app → Transaction History → Copy the 12-digit UTR or Transaction ID
-      </div>
-      <input
-        type="text"
-        id="upi-utr-input"
-        class="upi-utr-input"
-        placeholder="e.g. 123456789012 or T2504031234567"
-        maxlength="30"
-        oninput="validateUtrInput()"
-      >
-      <div id="upi-utr-error" class="upi-utr-error" style="display:none;">
-        ⚠️ Please enter a valid UTR / Transaction ID (at least 8 characters)
-      </div>
+      <div class="upi-utr-label"><i class="bi bi-shield-check-fill"></i> Enter UTR / Transaction ID to confirm payment</div>
+      <div class="upi-utr-hint">After paying → open your UPI app → Transaction History → copy the 12-digit UTR or Transaction ID</div>
+      <input type="text" id="upi-utr-input" class="upi-utr-input" placeholder="e.g. 123456789012 or T2504031234567" maxlength="30" oninput="validateUtrInput()">
+      <div id="upi-utr-error" class="upi-utr-error" style="display:none;">⚠️ Please enter a valid UTR / Transaction ID (at least 8 characters)</div>
     </div>
 
-    <button class="upi-done-btn" id="upi-confirm-btn" onclick="confirmUpiPayment()">
-      ✅ I have paid — Confirm Order
-    </button>
-    <p style="font-size:11px; color:#aaa; margin-top:6px;">
-      ⚠️ Order will only be placed after valid transaction ID is entered
-    </p>
+    <button class="upi-done-btn" onclick="confirmUpiPayment()">✅ I have paid — Confirm Order</button>
+    <p style="font-size:11px;color:#aaa;margin-top:6px;">⚠️ Order only placed after valid transaction ID is entered</p>
   </div>
 </div>
 
-<!-- ===================== ANIMATION SCRIPT ===================== -->
+<!-- ANIMATIONS -->
 <script>
-  // Navbar scroll effect
   window.addEventListener('scroll', function() {
     var nav = document.getElementById('mainNav');
-    if (window.scrollY > 50) nav.classList.add('scrolled');
-    else nav.classList.remove('scrolled');
+    if (window.scrollY > 50) nav.classList.add('scrolled'); else nav.classList.remove('scrolled');
   });
-
-  // Cursor glow
   document.addEventListener('mousemove', function(e) {
-    var glow = document.getElementById('cursorGlow');
-    if (glow) { glow.style.left = e.clientX + 'px'; glow.style.top = e.clientY + 'px'; }
+    var g = document.getElementById('cursorGlow');
+    if (g) { g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px'; }
   });
-
-  // Floating particles in hero
   (function() {
-    var container = document.getElementById('heroParticles');
-    if (!container) return;
+    var c = document.getElementById('heroParticles');
+    if (!c) return;
     for (var i = 0; i < 18; i++) {
       var p = document.createElement('div');
       p.className = 'particle';
@@ -519,67 +366,16 @@
       p.style.setProperty('--dur', (6 + Math.random() * 8) + 's');
       p.style.setProperty('--delay', (Math.random() * 8) + 's');
       p.style.width = p.style.height = (2 + Math.random() * 3) + 'px';
-      container.appendChild(p);
+      c.appendChild(p);
     }
   })();
-
-  // Scroll reveal
   (function() {
     var els = document.querySelectorAll('.reveal, .reveal-left, .reveal-right');
-    var observer = new IntersectionObserver(function(entries) {
-      entries.forEach(function(entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-          observer.unobserve(entry.target);
-        }
-      });
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e) { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
     }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-    els.forEach(function(el) { observer.observe(el); });
+    els.forEach(function(el) { obs.observe(el); });
   })();
-</script>
-
-<!-- ===================== FIREBASE (REAL CONFIG) ===================== -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getDatabase, ref, push, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyAQ_8cq9DWzXb5bgl2SpY5xI5TYKd-6dfA",
-    authDomain: "laben-cafe.firebaseapp.com",
-    databaseURL: "https://laben-cafe-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "laben-cafe",
-    storageBucket: "laben-cafe.firebasestorage.app",
-    messagingSenderId: "236045385314",
-    appId: "1:236045385314:web:a363accd4d0b9f0fe35b3b",
-    measurementId: "G-9FDYBQXZQZ"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db  = getDatabase(app);
-
-  // Expose db and helpers to window so app.js can use them
-  window._firebaseDb   = db;
-  window._firebaseRef  = ref;
-  window._firebasePush = push;
-  window._firebaseSet  = set;
-
-  // Listen for new orders in realtime and sync to local orders array
-  const ordersRef = ref(db, 'orders');
-  onValue(ordersRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      // Convert Firebase object to array, newest first
-      const fbOrders = Object.entries(data).map(([key, val]) => ({ ...val, _fbKey: key }));
-      fbOrders.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      // Merge with local — use Firebase as source of truth for status updates
-      window._fbOrdersLoaded = fbOrders;
-    }
-    console.log('✅ Firebase Realtime DB connected — orders synced');
-  }, (error) => {
-    console.warn('⚠️ Firebase connection issue:', error.message);
-  });
-
-  console.log('✅ Firebase initialized successfully');
 </script>
 
 </body>
