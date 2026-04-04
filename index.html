@@ -355,22 +355,21 @@
 
       <!-- Notification card -->
       <div class="notif-card">
-        <div class="notif-card-title"><i class="bi bi-bell-fill"></i> Order Notifications</div>
+        <div class="notif-card-title"><i class="bi bi-bell-fill"></i> Background Order Notifications</div>
         <div class="notif-status-text" id="notif-status-text" style="color:#d97706;">
-          🔔 Tap Enable to get order alerts
+          🔔 Tap Enable to get order alerts even when browser is closed
         </div>
-        <!-- Button is always shown; JS updates its label/state via updateNotifStatus() -->
         <button class="notif-enable-btn" id="notif-enable-btn"
-          onclick="subscribeToPushNotifications()"
-          style="display:flex;">
-          <i class="bi bi-bell"></i> Enable Notifications
+          onclick="enableNotifications()" style="display:flex;">
+          <i class="bi bi-bell-fill"></i> Enable Notifications
         </button>
         <div class="notif-setup-steps" style="margin-top:10px;">
-          <strong>⚙️ For full push (works when browser is closed):</strong><br>
-          1. <strong>Firebase Console</strong> → Project Settings → Cloud Messaging<br>
-          2. Web Push certificates → <strong>Generate key pair</strong> → copy it<br>
-          3. Paste as <strong>FCM_VAPID_KEY</strong> in <strong>app.js line 17</strong><br>
-          4. Host on <strong>HTTPS</strong>, then click Enable above 🔔
+          <strong>⚙️ One-time setup for background push:</strong><br>
+          1. Firebase Console → Project Settings → <strong>Cloud Messaging</strong><br>
+          2. Web Push certificates → <strong>Generate key pair</strong> → paste as <code>FCM_VAPID_KEY</code> in app.js<br>
+          3. Cloud Messaging → <strong>Server key</strong> → paste as <code>FCM_SERVER_KEY</code> in app.js<br>
+          4. Host site on <strong>HTTPS</strong> (Firebase Hosting / GitHub Pages)<br>
+          5. Click <strong>Enable</strong> above — orders push even when screen is off 🔔
         </div>
       </div>
 
