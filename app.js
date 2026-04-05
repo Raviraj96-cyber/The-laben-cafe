@@ -81,9 +81,7 @@ let upiPaymentConfirmed = false;
 
 let firebaseDB      = null;
 let firebaseStorage = null;
-let firebaseMsg     = null;
 let firebaseOK      = false;
-let fcmToken        = null;
 let swRegistration  = null;
 let fbListenerReady = false;
 let notifEnabled    = localStorage.getItem('laben_notif_enabled') === '1';
@@ -113,234 +111,222 @@ function showToast(msg, type) {
   setTimeout(() => { t.style.opacity='0'; setTimeout(() => t.remove(), 400); }, 3500);
 }
 
-// ── Timeout helper ────────────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────────
+// Detect correct SW path for GitHub Pages repos vs root domains
+// GitHub Pages repo: https://user.github.io/repo-name/ → SW at /repo-name/firebase-messaging-sw.js
+// Root domain / username.github.io: SW at /firebase-messaging-sw.js
+function _getSWPath() {
+  const parts = location.pathname.split('/').filter(Boolean);
+  // If first path segment is not a file (no dot), treat as repo prefix
+  if (parts.length > 0 && !parts[0].includes('.')) {
+    return '/' + parts[0] + '/firebase-messaging-sw.js';
+  }
+  return '/firebase-messaging-sw.js';
+}
+function _getSWScope() {
+  const parts = location.pathname.split('/').filter(Boolean);
+  if (parts.length > 0 && !parts[0].includes('.')) {
+    return '/' + parts[0] + '/';
+  }
+  return '/';
+}
+
 function _timeout(ms) {
   return new Promise((_,r) => setTimeout(() => r(new Error('timeout')), ms));
 }
-
-// ── Is the site on HTTPS? ─────────────────────────────────────────────────
 function isSecureContext() {
   return location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 }
 
-// ── Post message to active Service Worker ─────────────────────────────────
+// ── Post message to Service Worker ───────────────────────────────────────────
 function postToSW(data) {
-  // Try via controller first (most reliable on mobile)
   if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage(data);
-    return;
+    navigator.serviceWorker.controller.postMessage(data); return;
   }
-  // Fall back to registration
   if (swRegistration && swRegistration.active) {
-    swRegistration.active.postMessage(data);
-    return;
+    swRegistration.active.postMessage(data); return;
   }
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready.then(reg => {
-      if (reg.active) reg.active.postMessage(data);
-    }).catch(() => {});
+    navigator.serviceWorker.ready.then(reg => { if (reg.active) reg.active.postMessage(data); }).catch(()=>{});
   }
 }
 
-// ── Show notification (foreground fallback) ───────────────────────────────
+// ── Show notification via SW (most reliable) ─────────────────────────────────
 function showDirectNotification(title, body, orderId) {
   if (Notification.permission !== 'granted') return;
   const opts = {
-    body, icon:'/icon-192.png', badge:'/icon-72.png',
-    tag: orderId ? 'order-'+orderId : 'laben-new-order',
-    renotify:true, vibrate:[400,100,400,100,400], requireInteraction:true,
-    data:{ url:'/?openAdmin=1', orderId:orderId||'' },
-    actions:[{ action:'view', title:'👀 View Order' },{ action:'dismiss', title:'✕ Dismiss' }]
+    body, icon: '/icon-192.png', badge: '/icon-192.png',
+    tag: orderId ? 'laben-order-' + orderId : 'laben-order',
+    renotify: true, vibrate: [300, 100, 300, 100, 300], requireInteraction: true,
+    data: { url: '/?openAdmin=1', orderId: orderId || '' }
   };
-  // Use SW to show notification (works on mobile)
-  if (swRegistration) {
-    swRegistration.showNotification(title, opts).catch(() => {
-      try { new Notification(title, { body, icon:'/icon-192.png' }); } catch(e){}
+  const reg = swRegistration;
+  if (reg) {
+    reg.showNotification(title, opts).catch(() => {
+      try { new Notification(title, { body, icon: '/icon-192.png' }); } catch(e) {}
     });
   } else {
-    try { new Notification(title, { body, icon:'/icon-192.png' }); } catch(e){}
+    try { new Notification(title, { body, icon: '/icon-192.png' }); } catch(e) {}
   }
 }
 
-// ── Trigger notification for a new order ─────────────────────────────────
 function notifyNewOrder(order) {
   if (!notifEnabled && localStorage.getItem('laben_notif_enabled') !== '1') return;
   if (Notification.permission !== 'granted') return;
-
   const title = '🛎️ New Order #' + order.id + ' — The Laben Café';
   const body  = (order.name||'Customer') + ' · ₹' + (order.total||'?') + ' · ' + (order.payment||'COD');
-
-  // Send to SW (works even when tab is in background on Android)
-  postToSW({ type:'NEW_ORDER', title, body, orderId: order.id });
-  // Also show directly as backup
+  // Tell SW to show notification (works even when tab is in background)
+  postToSW({ type: 'NEW_ORDER', title, body, orderId: order.id });
+  // Also attempt direct notification as fallback
   showDirectNotification(title, body, order.id);
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// ENABLE NOTIFICATIONS — called when admin clicks the button
-// ══════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// ENABLE NOTIFICATIONS
+// ══════════════════════════════════════════════════════════════════════════════
 async function enableNotifications() {
   const btn = document.getElementById('notif-enable-btn');
+  const statusEl = document.getElementById('notif-status-text');
 
-  function resetBtn() {
+  function setStatus(msg, color) {
+    if (statusEl) { statusEl.innerHTML = msg; statusEl.style.color = color; }
+  }
+  function resetBtn(label) {
     if (!btn) return;
-    btn.disabled  = false;
-    btn.innerHTML = '<i class="bi bi-bell-fill me-1"></i> Enable Notifications';
-    btn.onclick   = enableNotifications;
+    btn.disabled = false;
+    btn.innerHTML = label || '<i class="bi bi-bell-fill me-1"></i> Enable Notifications';
+    btn.onclick = enableNotifications;
   }
 
-  // ── 1. Must have Notification API ─────────────────────────────────────
+  // 1. Need Notification API
   if (!('Notification' in window)) {
-    showToast('❌ Notifications not supported in this browser', 'error');
-    updateNotifStatus(); return;
+    setStatus('❌ This browser does not support notifications.', '#dc2626');
+    return;
   }
 
-  // ── 2. Must be HTTPS ──────────────────────────────────────────────────
+  // 2. Need HTTPS
   if (!isSecureContext()) {
-    // Show clear message — don't show vague "SW failed"
-    const el = document.getElementById('notif-status-text');
-    if (el) {
-      el.innerHTML = '❌ <strong>HTTPS required!</strong><br>Your site is on HTTP. Push notifications only work on HTTPS.<br><br>➡️ Deploy to <strong>Firebase Hosting</strong> (free):<br><code style="font-size:11px;background:#f5f5f5;padding:2px 6px;border-radius:4px;">firebase deploy</code><br>or use <strong>GitHub Pages</strong> / <strong>Vercel</strong>.';
-      el.style.color = '#dc2626';
-    }
+    setStatus(
+      '❌ <strong>HTTPS required.</strong><br>Notifications only work on <code>https://</code> sites.<br>' +
+      '➡️ Deploy to Firebase Hosting, Vercel, or Netlify (all free).', '#dc2626'
+    );
     if (btn) btn.style.display = 'none';
     return;
   }
 
-  // ── 3. Must have Service Worker support ───────────────────────────────
+  // 3. Need Service Worker support
   if (!('serviceWorker' in navigator)) {
-    showToast('❌ Service Workers not supported in this browser', 'error');
-    updateNotifStatus(); return;
+    setStatus('❌ This browser does not support Service Workers.', '#dc2626');
+    return;
   }
 
-  // ── 4. Request notification permission ────────────────────────────────
-  if (btn) { btn.disabled=true; btn.innerHTML='⏳ Waiting for permission…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Requesting permission…'; }
 
+  // 4. Request permission
   let perm;
   try { perm = await Promise.race([Notification.requestPermission(), _timeout(15000)]); }
   catch(e) { perm = Notification.permission; }
 
   if (perm !== 'granted') {
-    showToast('❌ Permission denied. Tap the lock icon 🔒 in the address bar → Allow notifications.', 'error');
-    resetBtn(); updateNotifStatus(); return;
+    setStatus(
+      '❌ <strong>Permission denied.</strong><br>Tap the 🔒 lock icon in the address bar → Notifications → Allow → reload page.',
+      '#dc2626'
+    );
+    resetBtn(); return;
   }
 
-  // ── 5. Register Service Worker ────────────────────────────────────────
-  if (btn) { btn.innerHTML='⏳ Loading service worker…'; }
+  if (btn) btn.innerHTML = '⏳ Registering service worker…';
+
+  // 5. Register Service Worker
+  // First verify the file actually exists
+  try {
+    const swPath = _getSWPath();
+    const check = await fetch(swPath, { method: 'HEAD', cache: 'no-cache' });
+    if (!check.ok) {
+      setStatus(
+        '❌ <strong>File not found on server (HTTP ' + check.status + ').</strong><br><br>' +
+        '➡️ Upload <code>firebase-messaging-sw.js</code> to your <strong>root folder</strong>:<br>' +
+        '<span style="font-size:11px;color:#888;">' +
+        'cPanel/Hostinger: <code>public_html/firebase-messaging-sw.js</code><br>' +
+        'Firebase Hosting: <code>public/firebase-messaging-sw.js</code><br>' +
+        'Then run <code>firebase deploy</code> or re-upload.' +
+        '</span>',
+        '#dc2626'
+      );
+      resetBtn(); return;
+    }
+  } catch(e) {
+    // Network error — still try to register
+  }
 
   try {
-    // Register with explicit path
     const reg = await Promise.race([
-      navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope:'/' }),
-      _timeout(10000)
+      navigator.serviceWorker.register(_getSWPath(), { scope: _getSWScope() }),
+      _timeout(12000)
     ]);
     swRegistration = reg;
 
-    // Wait for activation
+    // Wait for SW to activate
     if (reg.installing || reg.waiting) {
       await Promise.race([
         new Promise(resolve => {
           const sw = reg.installing || reg.waiting;
-          sw.addEventListener('statechange', e => {
-            if (e.target.state === 'activated') resolve();
-          });
+          sw.addEventListener('statechange', e => { if (e.target.state === 'activated') resolve(); });
         }),
         _timeout(8000)
-      ]);
+      ]).catch(() => {});
     }
-    // Ensure controller is set
+
+    // Wait for controller
     if (!navigator.serviceWorker.controller) {
       await Promise.race([
         new Promise(resolve => {
-          navigator.serviceWorker.addEventListener('controllerchange', resolve, { once:true });
+          navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
         }),
         _timeout(5000)
       ]).catch(() => {});
     }
+
   } catch(e) {
-    console.error('[SW] Registration error:', e);
-
-    // ── Smart diagnosis ────────────────────────────────────────────────────
-    const el = document.getElementById('notif-status-text');
-    let reason = '';
     const msg = (e.message || '').toLowerCase();
-
-    if (msg.includes('404') || msg.includes('not found') || msg.includes('load failed') || msg.includes('failed to load')) {
-      reason = '⚠️ <strong>firebase-messaging-sw.js not found on your server.</strong><br><br>' +
-        '➡️ <strong>Fix:</strong> Upload <code>firebase-messaging-sw.js</code> to the <strong>root folder</strong> of your site ' +
-        '(same folder as <code>index.html</code>).<br>' +
-        '<span style="font-size:11px;color:#888;">If you are using Firebase Hosting: run <code>firebase deploy</code>.<br>' +
-        'If you are using cPanel/FTP: upload to <code>public_html/firebase-messaging-sw.js</code>.</span>';
-    } else if (msg.includes('https') || msg.includes('secure')) {
-      reason = '⚠️ <strong>HTTPS required.</strong><br>Service workers only work on <code>https://</code> sites.';
-    } else if (msg.includes('scope') || msg.includes('path')) {
-      reason = '⚠️ <strong>Wrong file path / scope.</strong><br>The file must be at the root: <code>/firebase-messaging-sw.js</code>';
-    } else if (msg.includes('mime') || msg.includes('content-type') || msg.includes('javascript')) {
-      reason = '⚠️ <strong>Wrong MIME type.</strong><br>Your server is not serving the .js file as <code>application/javascript</code>.';
-    } else {
-      reason = '⚠️ <strong>Service worker failed.</strong><br>Error: ' + (e.message || 'unknown') + '<br><br>' +
-        '➡️ Make sure <code>firebase-messaging-sw.js</code> is uploaded to your site root folder.';
+    let reason = '❌ <strong>Service worker failed.</strong><br>Error: ' + (e.message || 'unknown');
+    if (msg.includes('mime') || msg.includes('text/html') || msg.includes('content-type')) {
+      reason = '❌ <strong>Wrong file type.</strong> Your server is returning the SW file as HTML instead of JavaScript.<br>' +
+               '<span style="font-size:11px">Make sure you uploaded a <code>.js</code> file, not an HTML page.</span>';
+    } else if (msg.includes('404') || msg.includes('not found')) {
+      reason = '❌ <strong>File not found (404).</strong><br>Upload <code>firebase-messaging-sw.js</code> to your root folder.';
     }
-
-    // Show detailed message in the UI
-    if (el) { el.innerHTML = reason; el.style.color = '#dc2626'; }
-
-    // Try a 404 check to give definitive feedback
-    fetch('/firebase-messaging-sw.js', { method: 'HEAD' })
-      .then(r => {
-        if (!r.ok && el) {
-          el.innerHTML = '❌ <strong>File missing on server (HTTP ' + r.status + ').</strong><br><br>' +
-            '➡️ Upload <code>firebase-messaging-sw.js</code> to your <strong>root folder</strong> (same level as <code>index.html</code>).<br>' +
-            '<span style="font-size:11px;color:#888;">Firebase Hosting root = <code>public/</code> folder.<br>' +
-            'cPanel/FTP root = <code>public_html/</code> folder.</span>';
-          el.style.color = '#dc2626';
-        }
-      }).catch(() => {});
-
-    resetBtn(); updateNotifStatus(); return;
+    setStatus(reason, '#dc2626');
+    resetBtn(); return;
   }
 
-  // ── 6. Get FCM token ──────────────────────────────────────────────────
-  if (btn) { btn.innerHTML='⏳ Registering device…'; }
-
-  if (firebaseMsg) {
-    try {
-      const activeReg = await Promise.race([navigator.serviceWorker.ready, _timeout(5000)]);
-      const token = await Promise.race([
-        firebaseMsg.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: activeReg }),
-        _timeout(10000)
-      ]);
-      if (token) {
-        fcmToken = token;
-        localStorage.setItem('laben_fcm_token', token);
-        if (firebaseOK && firebaseDB) {
-          firebaseDB.ref('fcm_tokens/' + token.slice(-20)).set({
-            token, device: navigator.userAgent.slice(0,100), timestamp: Date.now()
-          }).catch(()=>{});
-        }
-        console.log('✅ FCM token:', token.slice(0,30)+'…');
-      }
-    } catch(e) {
-      console.warn('[FCM] Token failed (SW notifications still work):', e.message);
-    }
-  }
-
-  // ── 7. Done ───────────────────────────────────────────────────────────
+  // 6. All done!
   notifEnabled = true;
   localStorage.setItem('laben_notif_enabled', '1');
-  postToSW({ type:'START_WATCH' });
 
-  showToast('🔔 Done! You will get order alerts even when this tab is in the background.', 'success');
+  // Tell SW to start watching
+  postToSW({ type: 'START_WATCH' });
+
+  // Set up SW message listener
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'OPEN_ADMIN') {
+      const el = document.getElementById('adminPanel');
+      if (el) new bootstrap.Offcanvas(el).show();
+    }
+  });
+
+  // Show test notification
   setTimeout(() => showDirectNotification(
-    '✅ Notifications Active — The Laben Café',
-    'Background alerts ON. New orders will wake your phone! 🛎️', ''
-  ), 700);
+    '✅ Notifications ON — The Laben Café',
+    'You will now get alerts for every new order, even in background! 🛎️', ''
+  ), 500);
 
+  showToast('🔔 Notifications enabled! You will get order alerts.', 'success');
   resetBtn();
   updateNotifStatus();
 }
 
-// ── Notification status UI ────────────────────────────────────────────────
+// ── Notification status UI ────────────────────────────────────────────────────
 function updateNotifStatus() {
   const el  = document.getElementById('notif-status-text');
   const btn = document.getElementById('notif-enable-btn');
@@ -350,136 +336,112 @@ function updateNotifStatus() {
   const enabled = notifEnabled || localStorage.getItem('laben_notif_enabled') === '1';
 
   if (!('Notification' in window)) {
-    el.innerHTML='❌ Notifications not supported in this browser'; el.style.color='#dc2626';
-    if (btn) btn.style.display='none'; return;
+    el.innerHTML = '❌ Notifications not supported in this browser.';
+    el.style.color = '#dc2626';
+    if (btn) btn.style.display = 'none'; return;
   }
   if (!secure) {
-    el.innerHTML='❌ <strong>HTTPS required</strong> — Notifications only work on https:// sites. Deploy to Firebase Hosting, GitHub Pages, or Vercel (all free).'; el.style.color='#dc2626';
-    if (btn) btn.style.display='none'; return;
+    el.innerHTML = '❌ <strong>HTTPS required.</strong> Notifications only work on https:// sites.';
+    el.style.color = '#dc2626';
+    if (btn) btn.style.display = 'none'; return;
   }
   if (Notification.permission === 'denied') {
-    el.innerHTML='❌ <strong>Blocked</strong> — Tap the 🔒 lock in the address bar → Site settings → Notifications → Allow → then reload.'; el.style.color='#dc2626';
-    if (btn) btn.style.display='none'; return;
+    el.innerHTML = '❌ <strong>Blocked by browser.</strong> Tap 🔒 in address bar → Notifications → Allow → reload.';
+    el.style.color = '#dc2626';
+    if (btn) btn.style.display = 'none'; return;
   }
   if (Notification.permission === 'granted' && enabled) {
-    el.innerHTML='✅ <strong>Active</strong> — You will receive order alerts even when this tab is in the background 🔔'; el.style.color='#16a34a';
+    el.innerHTML = '✅ <strong>Active.</strong> You will get order alerts even when this tab is in the background. 🔔';
+    el.style.color = '#16a34a';
     if (btn) {
-      btn.style.display=''; btn.disabled=false;
-      btn.innerHTML='<i class="bi bi-bell-slash me-1"></i> Disable';
-      btn.onclick=() => {
-        notifEnabled=false; localStorage.removeItem('laben_notif_enabled');
-        showToast('🔕 Notifications disabled','info'); updateNotifStatus();
+      btn.style.display = ''; btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-bell-slash me-1"></i> Disable';
+      btn.onclick = () => {
+        notifEnabled = false;
+        localStorage.removeItem('laben_notif_enabled');
+        showToast('🔕 Notifications disabled', 'info');
+        updateNotifStatus();
       };
     }
     return;
   }
-  // Default: not yet enabled — silently check if SW file exists
-  el.innerHTML='🔔 Tap <strong>Enable</strong> to get new order alerts in the background'; el.style.color='#d97706';
+  // Default: not enabled yet
+  el.innerHTML = '🔔 Tap <strong>Enable</strong> to get new order alerts even when browser is in background.';
+  el.style.color = '#d97706';
   if (btn) {
-    btn.style.display=''; btn.disabled=false;
-    btn.innerHTML='<i class="bi bi-bell-fill me-1"></i> Enable Notifications';
-    btn.onclick=enableNotifications;
-  }
-  // Background check: is the SW file present?
-  if ('serviceWorker' in navigator && secure) {
-    fetch('/firebase-messaging-sw.js', { method: 'HEAD' })
-      .then(r => {
-        if (!r.ok && el && el.style.color !== '#16a34a') {
-          el.innerHTML = '❌ <strong>Setup needed:</strong> <code>firebase-messaging-sw.js</code> is missing from your server root.<br>' +
-            '<span style="font-size:11px;color:#888;">Upload it to the same folder as <code>index.html</code> (cPanel → <code>public_html/</code> or Firebase → <code>public/</code>).</span>';
-          el.style.color = '#dc2626';
-          if (btn) btn.style.display = 'none';
-        }
-      }).catch(() => {}); // network error — ignore
+    btn.style.display = ''; btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-bell-fill me-1"></i> Enable Notifications';
+    btn.onclick = enableNotifications;
   }
 }
 
-// ── Firebase init ─────────────────────────────────────────────────────────
+// ── Firebase init ─────────────────────────────────────────────────────────────
 function initFirebase() {
   try {
-    if (typeof firebase === 'undefined') { console.warn('Firebase SDK not loaded'); updateNotifStatus(); return; }
+    if (typeof firebase === 'undefined') { console.warn('Firebase SDK not loaded'); return; }
     if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
 
     firebaseDB = firebase.database();
     firebaseOK = true;
     if (firebase.storage) firebaseStorage = firebase.storage();
 
-    // FCM (only works on HTTPS)
-    if (isSecureContext() && firebase.messaging && firebase.messaging.isSupported()) {
-      try {
-        firebaseMsg = firebase.messaging();
-        firebaseMsg.onMessage(payload => {
-          const d=payload.data||{}, n=payload.notification||{};
-          const title=d.title||n.title||'🛎️ New Order!';
-          const body=d.body||n.body||'A new order arrived.';
-          showToast('🛎️ '+body,'info');
-          showDirectNotification(title, body, d.orderId||'');
-        });
-      } catch(e) { console.warn('[FCM]',e.message); firebaseMsg=null; }
-    } else {
-      firebaseMsg=null;
-    }
-
-    updateNotifStatus();
     showToast('🔥 Firebase connected!', 'success');
 
-    // ── Orders listener ───────────────────────────────────────────────────
+    // ── Orders listener ──────────────────────────────────────────────────────
     firebaseDB.ref('orders').on('value', snapshot => {
       const raw = snapshot.val();
-      if (!raw) { fbListenerReady=true; return; }
+      if (!raw) { fbListenerReady = true; return; }
 
       const fbArr = Object.entries(raw)
-        .map(([k,v]) => ({ ...v, _fbKey:k }))
-        .sort((a,b) => (b.timestamp||0)-(a.timestamp||0));
+        .map(([k, v]) => ({ ...v, _fbKey: k }))
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
       const newOrders = [];
       fbArr.forEach(fbO => {
-        const local = orders.find(o => o.id===fbO.id);
+        const local = orders.find(o => o.id === fbO.id);
         if (!local) {
           orders.unshift(fbO);
           if (fbListenerReady && !seenIds.has(fbO.id)) newOrders.push(fbO);
           seenIds.add(fbO.id);
-        } else { local.status=fbO.status; local._fbKey=fbO._fbKey; }
+        } else { local.status = fbO.status; local._fbKey = fbO._fbKey; }
       });
 
-      fbListenerReady=true; saveOrders(); _saveSeen();
-      const dash=document.getElementById('admin-dashboard');
-      if (dash && dash.style.display!=='none') renderOrdersList();
+      fbListenerReady = true; saveOrders(); _saveSeen();
+      const dash = document.getElementById('admin-dashboard');
+      if (dash && dash.style.display !== 'none') renderOrdersList();
 
       newOrders.forEach(o => {
-        showToast('🛎️ New order from '+(o.name||'customer')+'!','info');
+        showToast('🛎️ New order from ' + (o.name || 'customer') + '!', 'info');
         notifyNewOrder(o);
       });
 
-    }, err => showToast('❌ Firebase: '+err.message,'error'));
+    }, err => showToast('❌ Firebase: ' + err.message, 'error'));
 
-    // ── Categories sync ───────────────────────────────────────────────────
+    // ── Categories sync ──────────────────────────────────────────────────────
     firebaseDB.ref('categories').on('value', snap => {
-      const d=snap.val();
-      if (d && Array.isArray(d)) { categories=d; saveCategories(); refreshMenuTabs(); refreshAdminCatDropdown(); }
+      const d = snap.val();
+      if (d && Array.isArray(d)) { categories = d; saveCategories(); refreshMenuTabs(); refreshAdminCatDropdown(); }
     });
 
-    // ── Menu sync ─────────────────────────────────────────────────────────
+    // ── Menu sync ────────────────────────────────────────────────────────────
     firebaseDB.ref('menu').on('value', snap => {
-      const d=snap.val(); if(!d) return;
-      const m=Array.isArray(d)?d:Object.values(d); if(!m.length) return;
-      m.forEach(fi => { const l=menuData.find(i=>i.id===fi.id); if(l){if(fi.img)l.img=fi.img;}else menuData.push(fi); });
+      const d = snap.val(); if (!d) return;
+      const m = Array.isArray(d) ? d : Object.values(d); if (!m.length) return;
+      m.forEach(fi => { const l = menuData.find(i => i.id === fi.id); if (l) { if (fi.img) l.img = fi.img; } else menuData.push(fi); });
       saveMenu(); renderMenu();
     });
 
-    // Restore saved FCM token
-    const saved=localStorage.getItem('laben_fcm_token');
-    if (saved) fcmToken=saved;
-    if (notifEnabled && swRegistration) postToSW({ type:'START_WATCH' });
+    // Start SW polling if notifications are enabled
+    if (notifEnabled && swRegistration) postToSW({ type: 'START_WATCH' });
     updateNotifStatus();
 
     if (window.location.search.includes('openAdmin=1')) {
-      setTimeout(()=>{ const e=document.getElementById('adminPanel'); if(e) new bootstrap.Offcanvas(e).show(); },800);
+      setTimeout(() => { const e = document.getElementById('adminPanel'); if (e) new bootstrap.Offcanvas(e).show(); }, 800);
     }
+
   } catch(e) {
-    console.error('Firebase init error:',e);
-    showToast('⚠️ Firebase failed: '+e.message,'error');
-    updateNotifStatus();
+    console.error('Firebase init error:', e);
+    showToast('⚠️ Firebase failed: ' + e.message, 'error');
   }
 }
 
@@ -948,32 +910,41 @@ function confirmUpiPayment(){
   clearCart();document.getElementById('orderForm').reset();document.getElementById('upi-info-hint').style.display='none';
 }
 
-// ── Service Worker registration ───────────────────────────────────────────
-// Only attempt on HTTPS — silently skip on HTTP
+// ── Service Worker — register silently at boot ───────────────────────────────
+// Works for BOTH GitHub Pages (repo site) and custom domain root sites
 if ('serviceWorker' in navigator && isSecureContext()) {
-  navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope:'/' })
+  // Detect GitHub Pages repo path (e.g. /laben-cafe/) vs root domain
+  const swPath = (function() {
+    const p = location.pathname;
+    // If hosted at root (custom domain or username.github.io root), use /
+    // If hosted under a repo path like /repo-name/, use that path
+    const parts = p.split('/').filter(Boolean);
+    const base = parts.length > 0 && !p.endsWith('.html') ? '/' + parts[0] + '/' : '/';
+    // Check if index.html is at root or in a subfolder
+    // We detect by seeing if the SW file should be relative or absolute
+    return base === '/' ? '/firebase-messaging-sw.js' : base + 'firebase-messaging-sw.js';
+  })();
+
+  const swScope = (function() {
+    const p = location.pathname;
+    const parts = p.split('/').filter(Boolean);
+    return parts.length > 0 && !p.endsWith('.html') ? '/' + parts[0] + '/' : '/';
+  })();
+
+  navigator.serviceWorker.register(swPath, { scope: swScope })
     .then(reg => {
       swRegistration = reg;
-      console.log('✅ SW registered:', reg.scope);
+      console.log('✅ SW registered at:', swPath, 'scope:', reg.scope);
       navigator.serviceWorker.addEventListener('message', e => {
         if (e.data && e.data.type === 'OPEN_ADMIN') {
-          const el=document.getElementById('adminPanel');
-          if(el) new bootstrap.Offcanvas(el).show();
+          const el = document.getElementById('adminPanel');
+          if (el) new bootstrap.Offcanvas(el).show();
         }
       });
-      if (notifEnabled) postToSW({ type:'START_WATCH' });
+      if (notifEnabled) postToSW({ type: 'START_WATCH' });
     })
     .catch(err => {
-      // Check if the file actually exists
-      fetch('/firebase-messaging-sw.js', { method: 'HEAD' })
-        .then(r => {
-          if (!r.ok) {
-            console.error('❌ firebase-messaging-sw.js NOT FOUND on server (HTTP ' + r.status + '). Upload it to your site root folder.');
-          } else {
-            console.warn('SW registration failed (file exists):', err.message);
-          }
-        })
-        .catch(() => console.warn('SW registration failed:', err.message));
+      console.warn('[SW] Boot registration failed:', err.message);
     });
 }
 
