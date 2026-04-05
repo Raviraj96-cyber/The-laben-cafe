@@ -1,35 +1,34 @@
 // =====================================================================
-// THE LABEN CAFÉ — app.js
+// THE LABEN CAFÉ — app.js  (background notifications, no server key)
 // =====================================================================
 //
-// HOW BACKGROUND NOTIFICATIONS WORK:
-//   1. Admin opens site, clicks "Enable Notifications"
-//   2. Browser asks for permission → we get an FCM token
-//   3. Token is saved to Firebase /fcm_tokens/
-//   4. When a new order arrives (Firebase listener fires),
-//      sendPushToSelf() sends an FCM push to this device's token
-//   5. The Service Worker (firebase-messaging-sw.js) wakes up and
-//      shows the notification — even if the tab is closed or the
-//      phone screen is off. Exactly like WhatsApp. ✅
+// HOW BACKGROUND NOTIFICATIONS WORK (no server key needed):
 //
-// REQUIRED ONE-TIME SETUP:
-//   1. Firebase Console → Project Settings → Cloud Messaging
-//   2. Web Push certificates → Generate key pair → copy key
-//   3. Paste as FCM_VAPID_KEY below
-//   4. Also paste your Firebase Server Key as FCM_SERVER_KEY below
-//      (Firebase Console → Cloud Messaging → Server key)
-//   5. Host on HTTPS (GitHub Pages / Firebase Hosting / Vercel)
-//   6. Admin panel → Enable Notifications → done ✅
+//   1. Admin clicks "Enable Notifications" → browser grants permission
+//      → FCM token saved (for future use) → SW registered
+//
+//   2. When a new order comes in (Firebase DB listener fires):
+//      → Main page sends a message to the SW: { type: 'NEW_ORDER', ... }
+//      → SW shows the notification immediately (works even in background tab)
+//
+//   3. If the tab is COMPLETELY CLOSED (screen off, browser closed):
+//      → The SW's own Firebase DB watcher polls /orders.json every time
+//        a push event arrives, or via Background Sync
+//      → SW detects new orders and shows notifications itself ✅
+//
+// SETUP (one-time):
+//   1. Firebase Console → Cloud Messaging → Web Push certificates
+//      → Generate key pair → paste as FCM_VAPID_KEY below ✅ (already done)
+//   2. Make sure firebase-messaging-sw.js is at your SITE ROOT
+//      (same folder as index.html, e.g. public/firebase-messaging-sw.js
+//       if using Firebase Hosting)
+//   3. Host on HTTPS (Firebase Hosting is free & easiest)
+//   4. Admin panel → Enable Notifications → done ✅
 //
 // =====================================================================
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🔑  PASTE YOUR KEYS HERE
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const FCM_VAPID_KEY  = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek';
-const FCM_SERVER_KEY = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek'; // Paste Firebase Server Key here for true background push
+const FCM_VAPID_KEY = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek';
 
-// ── Firebase config ───────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyAQ_8cq9DWzXb5bgl2SpY5xI5TYKd-6dfA",
   authDomain:        "laben-cafe.firebaseapp.com",
@@ -40,7 +39,7 @@ const FIREBASE_CONFIG = {
   appId:             "1:236045385314:web:a363accd4d0b9f0fe35b3b"
 };
 
-// ── Fallback images ───────────────────────────────────────────────────────
+// ── Images ────────────────────────────────────────────────────────────────
 const CATEGORY_IMAGES = {
   coffee:   'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=400&q=80',
   fries:    'https://images.unsplash.com/photo-1585325701956-60dd9c8553bc?w=400&q=80',
@@ -49,7 +48,6 @@ const CATEGORY_IMAGES = {
   burger:   'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80',
   maggi:    'https://images.unsplash.com/photo-1555126634-323283e090fa?w=400&q=80',
 };
-
 const LOCAL_ITEM_IMAGES = {
   'Cold Coffee With Crush':             'laban-cafe/imeges/cold_cofee_with_crush.jpg',
   'Cold Coffee With Icecream':          'cold-coffee-icecream.jpg',
@@ -97,19 +95,17 @@ const DEFAULT_MENU = [
   { id:20, name:'Cheese Corn Maggi',                  desc:'Creamy cheese and sweet corn Maggi',               price:100, cat:'maggi',    img:'' },
   { id:21, name:'Cheese Chilli Maggi',                desc:'Spicy chilli and melted cheese Maggi',             price:100, cat:'maggi',    img:'' },
 ];
-
 const DEFAULT_CATEGORIES = ['coffee','fries','sandwich','pizza','burger','maggi'];
 
-// ── App state ─────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────
 let menuData   = JSON.parse(localStorage.getItem('laben_menu')       || 'null') || JSON.parse(JSON.stringify(DEFAULT_MENU));
 let categories = JSON.parse(localStorage.getItem('laben_categories') || 'null') || [...DEFAULT_CATEGORIES];
 let cart       = JSON.parse(localStorage.getItem('laben_cart')       || '[]');
 let orders     = JSON.parse(localStorage.getItem('laben_orders')     || '[]');
-let nextId     = menuData.reduce((a, b) => Math.max(a, b.id), 0) + 1;
+let nextId     = menuData.reduce((a,b) => Math.max(a,b.id), 0) + 1;
 let currentCat = 'all';
 let upiPaymentConfirmed = false;
 
-// Firebase / FCM handles
 let firebaseDB      = null;
 let firebaseStorage = null;
 let firebaseMsg     = null;
@@ -117,18 +113,16 @@ let firebaseOK      = false;
 let fcmToken        = null;
 let swRegistration  = null;
 let fbListenerReady = false;
+let notifEnabled    = false; // true once permission granted + SW ready
 
-// ── Seen-order tracking ───────────────────────────────────────────────────
 function _loadSeen() {
   try { const s = localStorage.getItem('laben_seen_ids'); if (s) return new Set(JSON.parse(s)); } catch(e) {}
   return new Set(orders.map(o => o.id));
 }
 function _saveSeen() { try { localStorage.setItem('laben_seen_ids', JSON.stringify([...seenIds])); } catch(e) {} }
 let seenIds = _loadSeen();
-
 let pendingNewItemImg = '';
 
-// ── Persistence ───────────────────────────────────────────────────────────
 function saveMenu()       { localStorage.setItem('laben_menu',       JSON.stringify(menuData));   }
 function saveCategories() { localStorage.setItem('laben_categories', JSON.stringify(categories)); }
 function saveCart()       { localStorage.setItem('laben_cart',       JSON.stringify(cart));       }
@@ -136,76 +130,75 @@ function saveOrders()     { localStorage.setItem('laben_orders',     JSON.string
 
 // ── Toast ─────────────────────────────────────────────────────────────────
 function showToast(msg, type) {
-  const old = document.getElementById('laben-toast');
-  if (old) old.remove();
+  const old = document.getElementById('laben-toast'); if (old) old.remove();
   const colors = { success:'#16a34a', warning:'#d97706', error:'#dc2626', info:'#2563eb' };
   const t = document.createElement('div');
   t.id = 'laben-toast';
   t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:'+(colors[type]||'#333')+';color:#fff;padding:11px 22px;border-radius:50px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.25);font-family:Poppins,sans-serif;white-space:nowrap;transition:opacity .4s;';
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 3500);
-}
-
-// ── Show notification via Service Worker ──────────────────────────────────
-function showBrowserNotification(title, body, orderId) {
-  if (Notification.permission !== 'granted') return;
-  const opts = {
-    body, icon: '/icon-192.png', badge: '/icon-72.png',
-    tag: orderId ? 'order-' + orderId : 'laben-new-order',
-    renotify: true, vibrate: [300,100,300,100,300], requireInteraction: true,
-    data: { url: '/?openAdmin=1', orderId: orderId || '' },
-    actions: [{ action:'open', title:'👀 View Order' }, { action:'dismiss', title:'✕ Dismiss' }]
-  };
-  const show = reg => reg.showNotification(title, opts).catch(() => { try { new Notification(title, {body, icon:'/icon-192.png'}); } catch(e){} });
-  if (swRegistration) { show(swRegistration); return; }
-  if ('serviceWorker' in navigator) { navigator.serviceWorker.ready.then(show).catch(() => { try { new Notification(title,{body}); } catch(e){} }); return; }
-  try { new Notification(title, { body, icon: '/icon-192.png' }); } catch(e) {}
+  setTimeout(() => { t.style.opacity='0'; setTimeout(() => t.remove(), 400); }, 3500);
 }
 
 // ── Timeout helper ────────────────────────────────────────────────────────
 function _timeout(ms) {
-  return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+  return new Promise((_,reject) => setTimeout(() => reject(new Error('timeout')), ms));
 }
 
-// ═════════════════════════════════════════════════════════════════════
-// BACKGROUND PUSH — sends FCM message to this device so the SW wakes
-// up even when the tab is closed and the screen is off.
-// ═════════════════════════════════════════════════════════════════════
-async function sendPushToSelf(title, body, orderId) {
-  const token = fcmToken || localStorage.getItem('laben_fcm_token');
-  if (!token) return; // admin hasn't enabled notifications on this device
-
-  // If we have the server key, send a real FCM push (works when tab is CLOSED)
-  if (FCM_SERVER_KEY) {
-    try {
-      await fetch('https://fcm.googleapis.com/fcm/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'key=' + FCM_SERVER_KEY },
-        body: JSON.stringify({
-          to: token,
-          priority: 'high',
-          notification: { title, body, icon: '/icon-192.png' },
-          data: { title, body, orderId: orderId || '' }
-        })
-      });
-      console.log('[FCM] Background push sent');
-      return;
-    } catch(e) {
-      console.warn('[FCM] Push send failed, falling back to SW notification:', e);
-    }
+// ── Show notification via SW ──────────────────────────────────────────────
+function showViaServiceWorker(title, body, orderId) {
+  if (Notification.permission !== 'granted') return;
+  const opts = {
+    body, icon:'/icon-192.png', badge:'/icon-72.png',
+    tag: orderId ? 'order-'+orderId : 'laben-new-order',
+    renotify:true, vibrate:[400,100,400,100,400], requireInteraction:true,
+    data:{ url:'/?openAdmin=1', orderId:orderId||'' },
+    actions:[{ action:'view', title:'👀 View Order' },{ action:'dismiss', title:'✕ Dismiss' }]
+  };
+  if (swRegistration) {
+    swRegistration.showNotification(title, opts).catch(err => {
+      console.warn('[NOTIF] SW show failed:', err);
+      try { new Notification(title, { body, icon:'/icon-192.png' }); } catch(e){}
+    });
+  } else if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(() => {
+      try { new Notification(title, { body, icon:'/icon-192.png' }); } catch(e){}
+    });
+  } else {
+    try { new Notification(title, { body, icon:'/icon-192.png' }); } catch(e){}
   }
-
-  // Fallback: show via SW directly (works when page IS open in background tab)
-  showBrowserNotification(title, body, orderId);
 }
 
-// ═════════════════════════════════════════════════════════════════════
-// ENABLE NOTIFICATIONS (admin button handler)
-// ═════════════════════════════════════════════════════════════════════
+// ── Send message to SW ────────────────────────────────────────────────────
+function messageServiceWorker(data) {
+  if (swRegistration && swRegistration.active) {
+    swRegistration.active.postMessage(data);
+  } else if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(reg => {
+      if (reg.active) reg.active.postMessage(data);
+    }).catch(()=>{});
+  }
+}
+
+// ── Trigger order notification ────────────────────────────────────────────
+// Called when Firebase DB listener detects a new order.
+// Tells SW to show notification — works even if tab is in background.
+function triggerOrderNotification(order) {
+  const title = '🛎️ New Order #' + order.id + ' — The Laben Café';
+  const body  = (order.name||'Customer') + ' ordered ₹' + (order.total||'?') + ' via ' + (order.payment||'COD');
+
+  // Tell SW to show notification (works when tab is in background)
+  messageServiceWorker({ type:'NEW_ORDER', title, body, orderId: order.id });
+
+  // Also show directly for when tab is in foreground
+  showViaServiceWorker(title, body, order.id);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ENABLE NOTIFICATIONS
+// ══════════════════════════════════════════════════════════════════════
 async function enableNotifications() {
   const btn = document.getElementById('notif-enable-btn');
-
   function resetBtn() {
     if (!btn) return;
     btn.disabled  = false;
@@ -213,83 +206,103 @@ async function enableNotifications() {
     btn.onclick   = enableNotifications;
   }
 
-  // Must have Notification API
+  // 1. Need Notification API
   if (!('Notification' in window)) {
-    showToast('❌ This browser does not support notifications', 'error');
+    showToast('❌ Notifications not supported in this browser', 'error');
     updateNotifStatus(); return;
   }
 
-  // Must be HTTPS or localhost
+  // 2. Need HTTPS
   const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
   if (!isSecure) {
     showToast('⚠️ Notifications require HTTPS. Host on Firebase Hosting or GitHub Pages.', 'warning');
     updateNotifStatus(); return;
   }
 
-  // Firebase Messaging must be ready
-  if (!firebaseMsg) {
-    showToast('⚠️ Firebase not ready. Wait a moment and try again.', 'warning');
-    resetBtn(); return;
+  // 3. Check SW support
+  if (!('serviceWorker' in navigator)) {
+    showToast('❌ Service Workers not supported in this browser', 'error');
+    updateNotifStatus(); return;
   }
 
-  // Request permission
-  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Waiting for permission…'; }
+  // 4. Request notification permission
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Requesting permission…'; }
+
   let perm;
   try { perm = await Promise.race([Notification.requestPermission(), _timeout(15000)]); }
   catch(e) { perm = Notification.permission; }
 
   if (perm !== 'granted') {
-    showToast('❌ Permission denied. Tap the 🔒 icon in address bar → Allow notifications.', 'error');
+    showToast('❌ Permission denied. Tap the 🔒 icon in the address bar → Allow notifications.', 'error');
     resetBtn(); updateNotifStatus(); return;
   }
 
-  // Get service worker (5 s timeout)
-  if (btn) { btn.innerHTML = '⏳ Starting service worker…'; }
-  let swReg = swRegistration;
-  if (!swReg) {
-    try { swReg = await Promise.race([navigator.serviceWorker.ready, _timeout(5000)]); swRegistration = swReg; }
-    catch(e) {
-      showToast('❌ Service worker failed. Is firebase-messaging-sw.js at your site root?', 'error');
-      resetBtn(); updateNotifStatus(); return;
+  // 5. Register / get SW
+  if (btn) { btn.innerHTML = '⏳ Loading service worker…'; }
+  try {
+    // Try to register the SW if not already registered
+    if (!swRegistration) {
+      swRegistration = await Promise.race([
+        navigator.serviceWorker.register('/firebase-messaging-sw.js'),
+        _timeout(10000)
+      ]);
+    }
+    // Wait for it to be active
+    if (swRegistration.installing || swRegistration.waiting) {
+      await Promise.race([
+        new Promise(resolve => {
+          const sw = swRegistration.installing || swRegistration.waiting;
+          sw.addEventListener('statechange', e => { if (e.target.state === 'activated') resolve(); });
+        }),
+        _timeout(8000)
+      ]);
+    }
+  } catch(e) {
+    console.error('[SW] Registration failed:', e);
+    showToast('❌ Service worker failed. Check that firebase-messaging-sw.js is at your site root (/firebase-messaging-sw.js).', 'error');
+    resetBtn(); updateNotifStatus(); return;
+  }
+
+  // 6. Get FCM token (for future push via FCM console)
+  if (btn) { btn.innerHTML = '⏳ Registering device…'; }
+  if (firebaseMsg) {
+    try {
+      const activeReg = swRegistration.active ? swRegistration : await navigator.serviceWorker.ready;
+      const token = await Promise.race([
+        firebaseMsg.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: activeReg }),
+        _timeout(10000)
+      ]);
+      if (token) {
+        fcmToken = token;
+        localStorage.setItem('laben_fcm_token', token);
+        if (firebaseOK && firebaseDB) {
+          firebaseDB.ref('fcm_tokens/' + token.slice(-20)).set({
+            token, device: navigator.userAgent.slice(0, 100), timestamp: Date.now()
+          }).catch(e => console.warn('[FCM] Token save:', e));
+        }
+        console.log('✅ FCM token:', token.slice(0,30)+'…');
+      }
+    } catch(e) {
+      console.warn('[FCM] Token failed (non-critical, SW notifications still work):', e.message);
+      // Not fatal — SW-based notifications still work without FCM token
     }
   }
 
-  // Get FCM token (10 s timeout)
-  if (btn) { btn.innerHTML = '⏳ Registering device…'; }
-  let token;
-  try {
-    token = await Promise.race([
-      firebaseMsg.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: swReg }),
-      _timeout(10000)
-    ]);
-  } catch(e) {
-    console.error('[FCM] getToken failed:', e);
-    showToast('❌ FCM token failed. Check VAPID key and ensure the site is on HTTPS.', 'error');
-    resetBtn(); updateNotifStatus(); return;
-  }
+  // 7. Tell SW to start watching DB
+  notifEnabled = true;
+  localStorage.setItem('laben_notif_enabled', '1');
+  messageServiceWorker({ type: 'START_WATCH' });
 
-  if (!token) {
-    showToast('❌ Empty FCM token. Check VAPID key in app.js.', 'error');
-    resetBtn(); updateNotifStatus(); return;
-  }
+  showToast('🔔 Done! You will get order alerts even when this tab is in the background.', 'success');
 
-  // Save token
-  fcmToken = token;
-  localStorage.setItem('laben_fcm_token', token);
-  if (firebaseOK && firebaseDB) {
-    firebaseDB.ref('fcm_tokens/' + token.slice(-20)).set({
-      token, device: navigator.userAgent.slice(0, 120), timestamp: Date.now()
-    }).catch(e => console.warn('[FCM] Token save:', e));
-  }
-
-  console.log('✅ FCM registered:', token.slice(0, 30) + '…');
-  showToast('🔔 Done! New orders will alert you even when the browser is closed.', 'success');
-
-  // Test notification after short delay
-  setTimeout(() => showBrowserNotification(
-    '✅ Push Active — The Laben Café',
-    'You will now receive order alerts even when this tab is closed 🛎️', ''
-  ), 800);
+  // Test notification
+  setTimeout(() => {
+    showViaServiceWorker(
+      '✅ Notifications Active — The Laben Café',
+      'New order alerts are ON. You will be notified even in background! 🛎️',
+      ''
+    );
+  }, 600);
 
   resetBtn();
   updateNotifStatus();
@@ -302,56 +315,36 @@ function updateNotifStatus() {
   if (!el) return;
 
   const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
-  const hasToken = !!(fcmToken || localStorage.getItem('laben_fcm_token'));
-  const hasVapid = FCM_VAPID_KEY && FCM_VAPID_KEY !== 'YOUR_VAPID_KEY_HERE';
+  const enabled  = notifEnabled || localStorage.getItem('laben_notif_enabled') === '1';
 
   if (!('Notification' in window)) {
-    el.innerHTML = '❌ This browser does not support notifications';
-    el.style.color = '#dc2626';
-    if (btn) btn.style.display = 'none';
-    return;
+    el.innerHTML = '❌ Notifications not supported in this browser'; el.style.color = '#dc2626';
+    if (btn) btn.style.display = 'none'; return;
   }
   if (!isSecure) {
-    el.innerHTML = '⚠️ <strong>HTTPS required</strong> — Push notifications only work on secure sites (https://). Host on Firebase Hosting or GitHub Pages.';
-    el.style.color = '#d97706';
-    if (btn) btn.style.display = 'none';
-    return;
-  }
-  if (!hasVapid) {
-    el.innerHTML = '⚠️ Paste your VAPID key in <strong>app.js</strong> then reload.';
-    el.style.color = '#d97706';
-    if (btn) btn.style.display = 'none';
-    return;
+    el.innerHTML = '⚠️ <strong>HTTPS required</strong> — Host on Firebase Hosting or GitHub Pages for push notifications.'; el.style.color = '#d97706';
+    if (btn) btn.style.display = 'none'; return;
   }
   if (Notification.permission === 'denied') {
-    el.innerHTML = '❌ <strong>Blocked</strong> — Tap 🔒 in the address bar → Site settings → Notifications → Allow → reload.';
-    el.style.color = '#dc2626';
-    if (btn) btn.style.display = 'none';
-    return;
+    el.innerHTML = '❌ <strong>Blocked</strong> — Tap the 🔒 icon in the address bar → Site settings → Notifications → Allow → then reload.'; el.style.color = '#dc2626';
+    if (btn) btn.style.display = 'none'; return;
   }
-  if (Notification.permission === 'granted' && hasToken) {
-    const pushMode = FCM_SERVER_KEY ? 'even when browser is closed 🔔' : 'while this tab is open (add Server Key in app.js for full background push)';
-    el.innerHTML = '✅ <strong>Push Active</strong> — Alerts arrive ' + pushMode;
-    el.style.color = '#16a34a';
+  if (Notification.permission === 'granted' && enabled) {
+    el.innerHTML = '✅ <strong>Active</strong> — You will receive order alerts even when this tab is in the background 🔔'; el.style.color = '#16a34a';
     if (btn) {
-      btn.style.display = '';
-      btn.disabled = false;
+      btn.style.display = ''; btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-bell-slash me-1"></i> Disable';
       btn.onclick = () => {
-        fcmToken = null;
-        localStorage.removeItem('laben_fcm_token');
-        showToast('🔕 Push notifications disabled on this device', 'info');
-        updateNotifStatus();
+        notifEnabled = false; localStorage.removeItem('laben_notif_enabled');
+        showToast('🔕 Notifications disabled', 'info'); updateNotifStatus();
       };
     }
     return;
   }
   // Default: not yet enabled
-  el.innerHTML = '🔔 Tap <strong>Enable</strong> — get new order alerts even when this tab is closed';
-  el.style.color = '#d97706';
+  el.innerHTML = '🔔 Tap <strong>Enable</strong> to get new order alerts even when this tab is in the background'; el.style.color = '#d97706';
   if (btn) {
-    btn.style.display = '';
-    btn.disabled = false;
+    btn.style.display = ''; btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-bell-fill me-1"></i> Enable Notifications';
     btn.onclick = enableNotifications;
   }
@@ -367,22 +360,21 @@ function initFirebase() {
     firebaseOK = true;
     if (firebase.storage) firebaseStorage = firebase.storage();
 
-    // FCM (HTTPS / localhost only)
+    // FCM (HTTPS only)
     if (firebase.messaging && firebase.messaging.isSupported()) {
       try {
         firebaseMsg = firebase.messaging();
-        // Foreground messages (tab is open and in focus)
         firebaseMsg.onMessage(payload => {
           const data  = payload.data  || {};
           const notif = payload.notification || {};
           const title = data.title || notif.title || '🛎️ New Order!';
           const body  = data.body  || notif.body  || 'A new order arrived.';
           showToast('🛎️ ' + body, 'info');
-          showBrowserNotification(title, body, data.orderId || '');
+          showViaServiceWorker(title, body, data.orderId||'');
         });
-      } catch(e) { console.warn('[FCM] Init error:', e); firebaseMsg = null; }
+      } catch(e) { console.warn('[FCM] Init:', e.message); firebaseMsg = null; }
     } else {
-      console.warn('[FCM] Not supported (needs HTTPS).'); firebaseMsg = null;
+      firebaseMsg = null;
     }
 
     updateNotifStatus();
@@ -394,8 +386,8 @@ function initFirebase() {
       if (!raw) { fbListenerReady = true; return; }
 
       const fbArr = Object.entries(raw)
-        .map(([k, v]) => ({ ...v, _fbKey: k }))
-        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        .map(([k,v]) => ({ ...v, _fbKey:k }))
+        .sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
 
       const newOrders = [];
       fbArr.forEach(fbO => {
@@ -404,10 +396,7 @@ function initFirebase() {
           orders.unshift(fbO);
           if (fbListenerReady && !seenIds.has(fbO.id)) newOrders.push(fbO);
           seenIds.add(fbO.id);
-        } else {
-          local.status = fbO.status;
-          local._fbKey = fbO._fbKey;
-        }
+        } else { local.status = fbO.status; local._fbKey = fbO._fbKey; }
       });
 
       fbListenerReady = true;
@@ -416,12 +405,12 @@ function initFirebase() {
       const dash = document.getElementById('admin-dashboard');
       if (dash && dash.style.display !== 'none') renderOrdersList();
 
-      // Push each new order to the admin device (works in background)
+      // Notify for each new order
       newOrders.forEach(o => {
-        const pushTitle = '🛎️ New Order #' + o.id + ' — The Laben Café';
-        const pushBody  = o.name + ' ordered ₹' + o.total + ' via ' + o.payment;
-        showToast('🛎️ New order from ' + o.name + '!', 'info');
-        sendPushToSelf(pushTitle, pushBody, o.id);
+        showToast('🛎️ New order from ' + (o.name||'customer') + '!', 'info');
+        if (notifEnabled || localStorage.getItem('laben_notif_enabled') === '1') {
+          triggerOrderNotification(o);
+        }
       });
 
     }, err => showToast('❌ Firebase error: ' + err.message, 'error'));
@@ -434,8 +423,7 @@ function initFirebase() {
 
     // ── Menu sync ─────────────────────────────────────────────────────────
     firebaseDB.ref('menu').on('value', snap => {
-      const d = snap.val();
-      if (!d) return;
+      const d = snap.val(); if (!d) return;
       const fbMenu = Array.isArray(d) ? d : Object.values(d);
       if (!fbMenu.length) return;
       fbMenu.forEach(fbItem => {
@@ -445,9 +433,14 @@ function initFirebase() {
       saveMenu(); renderMenu();
     });
 
-    // Restore saved FCM token
-    const savedToken = localStorage.getItem('laben_fcm_token');
-    if (savedToken) { fcmToken = savedToken; updateNotifStatus(); }
+    // Restore notification state
+    if (localStorage.getItem('laben_notif_enabled') === '1') {
+      notifEnabled = true;
+      fcmToken = localStorage.getItem('laben_fcm_token') || null;
+      // Tell the already-registered SW to start watching
+      messageServiceWorker({ type: 'START_WATCH' });
+    }
+    updateNotifStatus();
 
     // Open admin if coming from notification tap
     if (window.location.search.includes('openAdmin=1')) {
@@ -485,14 +478,12 @@ function fileToBase64(file) {
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        const MAX = 400;
-        let w = img.width, h = img.height;
-        if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
-        if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.75));
+        const MAX = 400; let w = img.width, h = img.height;
+        if (w > MAX) { h = Math.round(h*MAX/w); w = MAX; }
+        if (h > MAX) { w = Math.round(w*MAX/h); h = MAX; }
+        const c = document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',0.75));
       };
       img.onerror = reject; img.src = e.target.result;
     };
@@ -506,74 +497,61 @@ function getItemImage(item) {
 
 // ── Menu tabs ─────────────────────────────────────────────────────────────
 function refreshMenuTabs() {
-  const tabsEl = document.getElementById('menuTabs');
-  if (!tabsEl) return;
+  const tabsEl = document.getElementById('menuTabs'); if (!tabsEl) return;
   const icons = { coffee:'☕', fries:'🍟', sandwich:'🥪', pizza:'🍕', burger:'🍔', maggi:'🍜' };
-  tabsEl.innerHTML = ['all', ...categories].map(cat => {
-    const label = cat === 'all' ? 'All Items' : cat.charAt(0).toUpperCase() + cat.slice(1);
+  tabsEl.innerHTML = ['all',...categories].map(cat => {
+    const label = cat==='all'?'All Items':cat.charAt(0).toUpperCase()+cat.slice(1);
     return `<li class="nav-item"><button class="menu-tab${cat===currentCat?' active':''}" data-cat="${cat}">${icons[cat]?icons[cat]+' ':''}${label}</button></li>`;
   }).join('');
   tabsEl.querySelectorAll('.menu-tab').forEach(btn => {
     btn.addEventListener('click', () => {
-      tabsEl.querySelectorAll('.menu-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active'); currentCat = btn.dataset.cat; renderMenu();
+      tabsEl.querySelectorAll('.menu-tab').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active'); currentCat=btn.dataset.cat; renderMenu();
     });
   });
 }
 
 // ── Render menu ───────────────────────────────────────────────────────────
 function renderMenu() {
-  const grid = document.getElementById('menu-grid');
-  if (!grid) return;
-  const items = currentCat === 'all' ? menuData : menuData.filter(i => i.cat === currentCat);
-  if (!items.length) { grid.innerHTML = `<div class="col-12 text-center text-muted py-5"><i class="bi bi-search fs-2 d-block mb-2"></i>No items in this category.</div>`; return; }
+  const grid = document.getElementById('menu-grid'); if (!grid) return;
+  const items = currentCat==='all' ? menuData : menuData.filter(i=>i.cat===currentCat);
+  if (!items.length) { grid.innerHTML=`<div class="col-12 text-center text-muted py-5"><i class="bi bi-search fs-2 d-block mb-2"></i>No items in this category.</div>`; return; }
   grid.innerHTML = items.map(item => {
-    const imgSrc   = getItemImage(item);
-    const fallback = CATEGORY_IMAGES[item.cat] || CATEGORY_IMAGES.pizza;
-    const catLabel = item.cat.charAt(0).toUpperCase() + item.cat.slice(1);
+    const imgSrc=getItemImage(item); const fallback=CATEGORY_IMAGES[item.cat]||CATEGORY_IMAGES.pizza;
+    const catLabel=item.cat.charAt(0).toUpperCase()+item.cat.slice(1);
     return `<div class="col-6 col-md-4 col-lg-3 fade-in"><div class="menu-card">
-      <div class="menu-card-img">
-        <img src="${imgSrc}" alt="${item.name}" loading="lazy" onerror="this.onerror=null;this.src='${fallback}';">
-        <span class="menu-card-cat">${catLabel}</span>
-      </div>
-      <div class="menu-card-body">
-        <div class="menu-card-name">${item.name}</div>
-        <div class="menu-card-desc">${item.desc}</div>
-        <div class="menu-card-footer">
-          <span class="menu-card-price">₹${item.price}</span>
-          <button class="btn-add-cart" onclick="addToCart(${item.id})"><i class="bi bi-plus-lg"></i></button>
-        </div>
-      </div>
-    </div></div>`;
+      <div class="menu-card-img"><img src="${imgSrc}" alt="${item.name}" loading="lazy" onerror="this.onerror=null;this.src='${fallback}';"><span class="menu-card-cat">${catLabel}</span></div>
+      <div class="menu-card-body"><div class="menu-card-name">${item.name}</div><div class="menu-card-desc">${item.desc}</div>
+        <div class="menu-card-footer"><span class="menu-card-price">₹${item.price}</span>
+          <button class="btn-add-cart" onclick="addToCart(${item.id})"><i class="bi bi-plus-lg"></i></button></div>
+      </div></div></div>`;
   }).join('');
   observeFadeIn();
 }
 
 // ── Cart ──────────────────────────────────────────────────────────────────
 function addToCart(itemId) {
-  const item = menuData.find(i => i.id === itemId);
-  if (!item) return;
-  const ex = cart.find(c => c.id === itemId);
-  if (ex) ex.qty++; else cart.push({ id: item.id, name: item.name, price: item.price, qty: 1 });
+  const item=menuData.find(i=>i.id===itemId); if(!item) return;
+  const ex=cart.find(c=>c.id===itemId);
+  if(ex) ex.qty++; else cart.push({id:item.id,name:item.name,price:item.price,qty:1});
   saveCart(); updateCartUI(); showAddedFeedback(itemId);
 }
 function removeFromCart(itemId) {
-  const idx = cart.findIndex(c => c.id === itemId);
-  if (idx === -1) return;
-  if (cart[idx].qty > 1) cart[idx].qty--; else cart.splice(idx, 1);
+  const idx=cart.findIndex(c=>c.id===itemId); if(idx===-1) return;
+  if(cart[idx].qty>1) cart[idx].qty--; else cart.splice(idx,1);
   saveCart(); updateCartUI();
 }
-function clearCart()    { cart = []; saveCart(); updateCartUI(); }
-function getCartTotal() { return cart.reduce((s, c) => s + c.price * c.qty, 0); }
+function clearCart()    { cart=[]; saveCart(); updateCartUI(); }
+function getCartTotal() { return cart.reduce((s,c)=>s+c.price*c.qty,0); }
 
 function updateCartUI() {
-  const qty = cart.reduce((s, c) => s + c.qty, 0);
-  document.getElementById('cart-count').textContent = qty;
-  const list = document.getElementById('cart-items-list');
+  const qty=cart.reduce((s,c)=>s+c.qty,0);
+  document.getElementById('cart-count').textContent=qty;
+  const list=document.getElementById('cart-items-list');
   if (!cart.length) {
-    list.innerHTML = `<div class="cart-empty"><i class="bi bi-bag-x"></i>Your cart is empty.<br><small class="text-muted">Add items from the menu!</small></div>`;
+    list.innerHTML=`<div class="cart-empty"><i class="bi bi-bag-x"></i>Your cart is empty.<br><small class="text-muted">Add items from the menu!</small></div>`;
   } else {
-    list.innerHTML = cart.map(c => `<div class="cart-item-row">
+    list.innerHTML=cart.map(c=>`<div class="cart-item-row">
       <div class="cart-item-info"><div class="cart-item-name">${c.name}</div><div class="cart-item-price">₹${c.price} each</div></div>
       <div class="cart-qty-controls">
         <button class="qty-btn" onclick="removeFromCart(${c.id})"><i class="bi bi-dash"></i></button>
@@ -583,267 +561,231 @@ function updateCartUI() {
       <strong style="min-width:52px;text-align:right;color:var(--accent)">₹${c.price*c.qty}</strong>
     </div>`).join('');
   }
-  document.getElementById('cart-total').textContent = getCartTotal();
-  const sb = document.getElementById('order-summary-box');
-  if (!sb) return;
-  if (!cart.length) {
-    sb.innerHTML = `<p class="mb-0 text-muted">Your cart is empty. Add items from the menu above.</p>`;
-  } else {
-    sb.innerHTML = `<strong class="d-block mb-2"><i class="bi bi-bag me-1"></i>Order Summary</strong>
-      ${cart.map(c=>`<div class="d-flex justify-content-between"><span>${c.name} × ${c.qty}</span><span>₹${c.price*c.qty}</span></div>`).join('')}
-      <hr class="my-2">
-      <div class="d-flex justify-content-between fw-bold"><span>Total</span><span style="color:var(--accent)">₹${getCartTotal()}</span></div>`;
-  }
+  document.getElementById('cart-total').textContent=getCartTotal();
+  const sb=document.getElementById('order-summary-box'); if(!sb) return;
+  if(!cart.length) { sb.innerHTML=`<p class="mb-0 text-muted">Your cart is empty. Add items from the menu above.</p>`; }
+  else { sb.innerHTML=`<strong class="d-block mb-2"><i class="bi bi-bag me-1"></i>Order Summary</strong>
+    ${cart.map(c=>`<div class="d-flex justify-content-between"><span>${c.name} × ${c.qty}</span><span>₹${c.price*c.qty}</span></div>`).join('')}
+    <hr class="my-2"><div class="d-flex justify-content-between fw-bold"><span>Total</span><span style="color:var(--accent)">₹${getCartTotal()}</span></div>`; }
 }
-
 function showAddedFeedback(itemId) {
-  const btn = document.querySelector(`.btn-add-cart[onclick="addToCart(${itemId})"]`);
-  if (!btn) return;
-  btn.style.background = '#16a34a'; btn.innerHTML = '<i class="bi bi-check-lg"></i>';
-  setTimeout(() => { btn.style.background = ''; btn.innerHTML = '<i class="bi bi-plus-lg"></i>'; }, 900);
+  const btn=document.querySelector(`.btn-add-cart[onclick="addToCart(${itemId})"]`); if(!btn) return;
+  btn.style.background='#16a34a'; btn.innerHTML='<i class="bi bi-check-lg"></i>';
+  setTimeout(()=>{btn.style.background='';btn.innerHTML='<i class="bi bi-plus-lg"></i>';},900);
 }
 function scrollToOrder() {
-  const oc = bootstrap.Offcanvas.getInstance(document.getElementById('cartPanel'));
-  if (oc) oc.hide();
-  setTimeout(() => document.getElementById('order').scrollIntoView({ behavior:'smooth' }), 300);
+  const oc=bootstrap.Offcanvas.getInstance(document.getElementById('cartPanel')); if(oc) oc.hide();
+  setTimeout(()=>document.getElementById('order').scrollIntoView({behavior:'smooth'}),300);
 }
 
 // ── Order placement ───────────────────────────────────────────────────────
 function placeOrder(e) {
-  e.preventDefault();
-  if (!cart.length) { alert('Your cart is empty!'); return; }
-  const payment = document.getElementById('ord-payment').value;
-  if (payment === 'UPI' && !upiPaymentConfirmed) { openUpiModal(getCartTotal()); return; }
-  const name    = document.getElementById('ord-name').value;
-  const phone   = document.getElementById('ord-phone').value;
-  const address = document.getElementById('ord-address').value;
-  const note    = document.getElementById('ord-note').value;
-  const orderId = 'LBN' + Date.now().toString().slice(-6);
-  const timeStr = new Date().toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true });
-  const newOrder = { id:orderId, time:timeStr, timestamp:Date.now(), name, phone, address, payment, note:note||'', items:JSON.parse(JSON.stringify(cart)), total:getCartTotal(), status:'new' };
+  e.preventDefault(); if(!cart.length){alert('Your cart is empty!');return;}
+  const payment=document.getElementById('ord-payment').value;
+  if(payment==='UPI'&&!upiPaymentConfirmed){openUpiModal(getCartTotal());return;}
+  const name=document.getElementById('ord-name').value;
+  const phone=document.getElementById('ord-phone').value;
+  const address=document.getElementById('ord-address').value;
+  const note=document.getElementById('ord-note').value;
+  const orderId='LBN'+Date.now().toString().slice(-6);
+  const timeStr=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
+  const newOrder={id:orderId,time:timeStr,timestamp:Date.now(),name,phone,address,payment,note:note||'',items:JSON.parse(JSON.stringify(cart)),total:getCartTotal(),status:'new'};
   orders.unshift(newOrder); saveOrders(); saveOrderToFirebase(newOrder);
-  showOrderConfirmation(orderId, name, phone, address, payment, note, getCartTotal());
-  upiPaymentConfirmed = false; clearCart();
+  showOrderConfirmation(orderId,name,phone,address,payment,note,getCartTotal());
+  upiPaymentConfirmed=false; clearCart();
   document.getElementById('orderForm').reset();
-  document.getElementById('upi-info-hint').style.display = 'none';
+  document.getElementById('upi-info-hint').style.display='none';
 }
-
-function showOrderConfirmation(orderId, name, phone, address, payment, note, total, utrId) {
-  const conf = document.getElementById('order-confirmation');
-  if (!conf) return;
-  conf.style.display = 'block';
-  conf.innerHTML = `<div class="order-success">
+function showOrderConfirmation(orderId,name,phone,address,payment,note,total,utrId) {
+  const conf=document.getElementById('order-confirmation'); if(!conf) return;
+  conf.style.display='block';
+  conf.innerHTML=`<div class="order-success">
     <i class="bi bi-check-circle-fill me-2"></i><strong>Order Placed Successfully!</strong><br>
     <span class="small">Order ID: <strong>${orderId}</strong></span><br>
     <span class="small">Name: ${name} | Phone: ${phone}</span><br>
     <span class="small">Delivery: ${address}</span><br>
     <span class="small">Payment: ${payment} | Total: <strong>₹${total}</strong></span>
-    ${utrId ? `<br><span class="small">UTR: <strong style="font-family:monospace;color:#5f259f">${utrId}</strong></span>` : ''}
-    ${note  ? `<br><span class="small">Note: ${note}</span>` : ''}
+    ${utrId?`<br><span class="small">UTR: <strong style="font-family:monospace;color:#5f259f">${utrId}</strong></span>`:''}
+    ${note?`<br><span class="small">Note: ${note}</span>`:''}
     <br><span class="small text-success">We'll call you shortly to confirm. 🙏</span>
   </div>`;
-  conf.scrollIntoView({ behavior: 'smooth' });
+  conf.scrollIntoView({behavior:'smooth'});
 }
 
 // ── Admin auth ────────────────────────────────────────────────────────────
 function adminLogin() {
-  const u = document.getElementById('adm-user').value;
-  const p = document.getElementById('adm-pass').value;
-  if (u === 'admin' && p === 'laben123') {
-    document.getElementById('admin-login-wrap').style.display = 'none';
-    document.getElementById('admin-dashboard').style.display  = 'block';
+  const u=document.getElementById('adm-user').value, p=document.getElementById('adm-pass').value;
+  if(u==='admin'&&p==='laben123'){
+    document.getElementById('admin-login-wrap').style.display='none';
+    document.getElementById('admin-dashboard').style.display='block';
     updateNotifStatus(); switchAdminTab('orders');
-  } else { document.getElementById('adm-err').style.display = 'block'; }
+  } else { document.getElementById('adm-err').style.display='block'; }
 }
 function adminLogout() {
-  document.getElementById('admin-login-wrap').style.display = 'block';
-  document.getElementById('admin-dashboard').style.display  = 'none';
-  document.getElementById('adm-user').value = '';
-  document.getElementById('adm-pass').value = '';
+  document.getElementById('admin-login-wrap').style.display='block';
+  document.getElementById('admin-dashboard').style.display='none';
+  document.getElementById('adm-user').value=''; document.getElementById('adm-pass').value='';
 }
 function switchAdminTab(tab) {
-  document.querySelectorAll('.adm-tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('adm-tab-' + tab).classList.add('active');
-  ['orders','menu','catmgr'].forEach(t => { document.getElementById('adm-panel-' + t).style.display = t === tab ? 'block' : 'none'; });
-  if (tab === 'orders') renderOrdersList();
-  if (tab === 'menu')   renderAdminList();
-  if (tab === 'catmgr') renderCategoryManager();
+  document.querySelectorAll('.adm-tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('adm-tab-'+tab).classList.add('active');
+  ['orders','menu','catmgr'].forEach(t=>{ document.getElementById('adm-panel-'+t).style.display=t===tab?'block':'none'; });
+  if(tab==='orders') renderOrdersList();
+  if(tab==='menu')   renderAdminList();
+  if(tab==='catmgr') renderCategoryManager();
 }
 
 // ── Category manager ──────────────────────────────────────────────────────
 function refreshAdminCatDropdown() {
-  const sel = document.getElementById('adm-cat');
-  if (!sel) return;
-  sel.innerHTML = categories.map(c => `<option value="${c}">${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('');
+  const sel=document.getElementById('adm-cat'); if(!sel) return;
+  sel.innerHTML=categories.map(c=>`<option value="${c}">${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('');
 }
 function renderCategoryManager() {
-  const wrap = document.getElementById('adm-cat-list');
-  if (!wrap) return;
-  if (!categories.length) { wrap.innerHTML = `<p class="text-muted small text-center py-3">No categories yet.</p>`; return; }
-  wrap.innerHTML = categories.map(cat => {
-    const count = menuData.filter(i => i.cat === cat).length;
+  const wrap=document.getElementById('adm-cat-list'); if(!wrap) return;
+  if(!categories.length){wrap.innerHTML=`<p class="text-muted small text-center py-3">No categories yet.</p>`;return;}
+  wrap.innerHTML=categories.map(cat=>{
+    const count=menuData.filter(i=>i.cat===cat).length;
     return `<div class="adm-cat-row">
       <div style="display:flex;align-items:center;gap:8px;flex:1;"><span style="font-weight:600;text-transform:capitalize;">${cat}</span><span class="cat-badge">${count} item${count!==1?'s':''}</span></div>
       <div style="display:flex;gap:6px;">
         <button onclick="startRenameCat('${cat}')" class="adm-edit-btn"><i class="bi bi-pencil-fill"></i> Rename</button>
         <button onclick="deleteCategory('${cat}')" class="adm-del-btn"><i class="bi bi-trash3-fill"></i></button>
-      </div>
-    </div>
+      </div></div>
     <div id="cat-rename-${cat}" style="display:none;padding:8px 0 10px;border-bottom:1px dashed #eee;">
       <div style="display:flex;gap:6px;align-items:center;">
         <input type="text" id="cat-rename-input-${cat}" value="${cat}" class="form-control form-control-sm" style="max-width:200px;">
         <button onclick="saveCategoryRename('${cat}')" class="btn btn-sm" style="background:#e8500a;color:#fff;border:none;border-radius:8px;padding:4px 12px;font-size:12px;">Save</button>
         <button onclick="cancelCatRename('${cat}')" class="btn btn-sm" style="background:#eee;border:none;border-radius:8px;padding:4px 10px;font-size:12px;">✕</button>
-      </div>
-    </div>`;
+      </div></div>`;
   }).join('');
 }
-function startRenameCat(cat)  { document.getElementById('cat-rename-'+cat).style.display='block'; document.getElementById('cat-rename-input-'+cat).focus(); }
-function cancelCatRename(cat) { document.getElementById('cat-rename-'+cat).style.display='none'; }
-function saveCategoryRename(oldCat) {
-  const input  = document.getElementById('cat-rename-input-'+oldCat);
-  const newCat = input.value.trim().toLowerCase().replace(/\s+/g,'');
-  if (!newCat) { showToast('Enter a valid name','error'); return; }
-  if (newCat === oldCat) { cancelCatRename(oldCat); return; }
-  if (categories.includes(newCat)) { showToast('Already exists!','warning'); return; }
-  categories[categories.indexOf(oldCat)] = newCat;
-  menuData.forEach(i => { if (i.cat===oldCat) i.cat=newCat; });
-  saveMenu(); saveCategories(); saveCategoriesToFirebase();
-  refreshMenuTabs(); refreshAdminCatDropdown(); renderCategoryManager(); renderMenu();
+function startRenameCat(cat){document.getElementById('cat-rename-'+cat).style.display='block';document.getElementById('cat-rename-input-'+cat).focus();}
+function cancelCatRename(cat){document.getElementById('cat-rename-'+cat).style.display='none';}
+function saveCategoryRename(oldCat){
+  const input=document.getElementById('cat-rename-input-'+oldCat);
+  const newCat=input.value.trim().toLowerCase().replace(/\s+/g,'');
+  if(!newCat){showToast('Enter a valid name','error');return;}
+  if(newCat===oldCat){cancelCatRename(oldCat);return;}
+  if(categories.includes(newCat)){showToast('Already exists!','warning');return;}
+  categories[categories.indexOf(oldCat)]=newCat;
+  menuData.forEach(i=>{if(i.cat===oldCat)i.cat=newCat;});
+  saveMenu();saveCategories();saveCategoriesToFirebase();
+  refreshMenuTabs();refreshAdminCatDropdown();renderCategoryManager();renderMenu();
   showToast('Renamed to "'+newCat+'"','success');
 }
-function addCategory() {
-  const input  = document.getElementById('adm-new-cat-input');
-  const newCat = input.value.trim().toLowerCase().replace(/\s+/g,'');
-  if (!newCat) { showToast('Enter a name','error'); return; }
-  if (categories.includes(newCat)) { showToast('Already exists!','warning'); return; }
-  categories.push(newCat);
-  saveCategories(); saveCategoriesToFirebase();
-  refreshMenuTabs(); refreshAdminCatDropdown(); renderCategoryManager();
-  input.value=''; showToast('"'+newCat+'" added!','success');
+function addCategory(){
+  const input=document.getElementById('adm-new-cat-input');
+  const newCat=input.value.trim().toLowerCase().replace(/\s+/g,'');
+  if(!newCat){showToast('Enter a name','error');return;}
+  if(categories.includes(newCat)){showToast('Already exists!','warning');return;}
+  categories.push(newCat);saveCategories();saveCategoriesToFirebase();
+  refreshMenuTabs();refreshAdminCatDropdown();renderCategoryManager();
+  input.value='';showToast('"'+newCat+'" added!','success');
 }
-function deleteCategory(cat) {
-  const count = menuData.filter(i=>i.cat===cat).length;
-  if (!confirm(count>0?`Delete "${cat}"? ${count} items will also be removed.`:`Delete "${cat}"?`)) return;
-  categories = categories.filter(c=>c!==cat);
-  if (count>0) menuData = menuData.filter(i=>i.cat!==cat);
-  saveMenu(); saveCategories(); saveCategoriesToFirebase();
-  refreshMenuTabs(); refreshAdminCatDropdown(); renderCategoryManager(); renderAdminList(); renderMenu();
+function deleteCategory(cat){
+  const count=menuData.filter(i=>i.cat===cat).length;
+  if(!confirm(count>0?`Delete "${cat}"? ${count} items will also be removed.`:`Delete "${cat}"?`))return;
+  categories=categories.filter(c=>c!==cat);
+  if(count>0)menuData=menuData.filter(i=>i.cat!==cat);
+  saveMenu();saveCategories();saveCategoriesToFirebase();
+  refreshMenuTabs();refreshAdminCatDropdown();renderCategoryManager();renderAdminList();renderMenu();
   showToast('Deleted!','success');
 }
 
-// ── Image upload handlers ─────────────────────────────────────────────────
-async function handleNewItemImageUpload(event) {
-  const file = event.target.files[0]; if (!file) return;
-  try {
-    const b64 = await fileToBase64(file); pendingNewItemImg = b64;
-    const preview = document.getElementById('adm-new-img-preview');
-    const label   = document.getElementById('adm-new-img-label');
-    if (preview) { preview.src=b64; preview.style.display='block'; }
-    if (label) label.textContent = '✅ '+file.name.slice(0,18);
-  } catch(e) { showToast('Image load failed','error'); }
+// ── Image handlers ────────────────────────────────────────────────────────
+async function handleNewItemImageUpload(event){
+  const file=event.target.files[0]; if(!file) return;
+  try{const b64=await fileToBase64(file);pendingNewItemImg=b64;
+    const p=document.getElementById('adm-new-img-preview'),l=document.getElementById('adm-new-img-label');
+    if(p){p.src=b64;p.style.display='block';}if(l)l.textContent='✅ '+file.name.slice(0,18);
+  }catch(e){showToast('Image load failed','error');}
 }
-function applyNewUrlImage() {
-  const url = (document.getElementById('adm-new-url-input')||{}).value?.trim()||'';
-  if (!url) { showToast('Enter a URL','error'); return; }
-  pendingNewItemImg = url; showToast('✅ Image URL set','success');
+function applyNewUrlImage(){
+  const url=(document.getElementById('adm-new-url-input')||{}).value?.trim()||'';
+  if(!url){showToast('Enter a URL','error');return;}pendingNewItemImg=url;showToast('✅ Image URL set','success');
 }
-async function handleEditItemImageUpload(event, itemId) {
-  const file = event.target.files[0]; if (!file) return;
-  try {
-    const b64 = await fileToBase64(file);
-    const preview = document.getElementById('adm-edit-img-preview-'+itemId);
-    const label   = document.getElementById('adm-edit-img-label-'+itemId);
-    if (preview) { preview.src=b64; preview.dataset.pending=b64; }
-    if (label) label.textContent = '✅ '+file.name.slice(0,18);
-  } catch(e) { showToast('Image load failed','error'); }
+async function handleEditItemImageUpload(event,itemId){
+  const file=event.target.files[0]; if(!file) return;
+  try{const b64=await fileToBase64(file);
+    const p=document.getElementById('adm-edit-img-preview-'+itemId),l=document.getElementById('adm-edit-img-label-'+itemId);
+    if(p){p.src=b64;p.dataset.pending=b64;}if(l)l.textContent='✅ '+file.name.slice(0,18);
+  }catch(e){showToast('Image load failed','error');}
 }
-function applyUrlImage(itemId) {
-  const url     = (document.getElementById('adm-edit-url-input-'+itemId)||{}).value?.trim()||'';
-  const preview = document.getElementById('adm-edit-img-preview-'+itemId);
-  if (!url) { showToast('Enter a URL','error'); return; }
-  if (preview) { preview.src=url; preview.dataset.pending=url; }
-  showToast('✅ Image URL applied','success');
+function applyUrlImage(itemId){
+  const url=(document.getElementById('adm-edit-url-input-'+itemId)||{}).value?.trim()||'';
+  const p=document.getElementById('adm-edit-img-preview-'+itemId);
+  if(!url){showToast('Enter a URL','error');return;}
+  if(p){p.src=url;p.dataset.pending=url;}showToast('✅ Image URL applied','success');
 }
 
 // ── Admin item list ───────────────────────────────────────────────────────
-function adminAddItem() {
-  const name  = (document.getElementById('adm-name') ||{}).value?.trim()||'';
-  const price = parseInt((document.getElementById('adm-price')||{}).value,10)||0;
-  const desc  = (document.getElementById('adm-desc') ||{}).value?.trim()||'';
-  const cat   = (document.getElementById('adm-cat')  ||{}).value||categories[0]||'other';
-  if (!name)     { showToast('Enter item name','error'); return; }
-  if (price < 1) { showToast('Enter valid price','error'); return; }
-  const newItem = { id:nextId++, name, price, desc, cat, img:pendingNewItemImg||'' };
-  menuData.push(newItem); saveMenu(); saveMenuItemToFirebase(newItem); renderMenu(); renderAdminList();
-  document.getElementById('adm-name').value=''; document.getElementById('adm-price').value=''; document.getElementById('adm-desc').value='';
+function adminAddItem(){
+  const name=(document.getElementById('adm-name')||{}).value?.trim()||'';
+  const price=parseInt((document.getElementById('adm-price')||{}).value,10)||0;
+  const desc=(document.getElementById('adm-desc')||{}).value?.trim()||'';
+  const cat=(document.getElementById('adm-cat')||{}).value||categories[0]||'other';
+  if(!name){showToast('Enter item name','error');return;}
+  if(price<1){showToast('Enter valid price','error');return;}
+  const newItem={id:nextId++,name,price,desc,cat,img:pendingNewItemImg||''};
+  menuData.push(newItem);saveMenu();saveMenuItemToFirebase(newItem);renderMenu();renderAdminList();
+  document.getElementById('adm-name').value='';document.getElementById('adm-price').value='';document.getElementById('adm-desc').value='';
   pendingNewItemImg='';
-  const preview=document.getElementById('adm-new-img-preview'); const label=document.getElementById('adm-new-img-label');
-  if (preview) { preview.src=''; preview.style.display='none'; } if (label) label.textContent='Choose Image';
+  const p=document.getElementById('adm-new-img-preview'),l=document.getElementById('adm-new-img-label');
+  if(p){p.src='';p.style.display='none';}if(l)l.textContent='Choose Image';
   showToast('"'+name+'" added!','success');
 }
-function adminDeleteItem(itemId) {
-  if (!confirm('Delete this item?')) return;
-  menuData = menuData.filter(i=>i.id!==itemId); saveMenu(); renderMenu(); renderAdminList();
-  if (firebaseOK && firebaseDB) firebaseDB.ref('menu/'+itemId).remove().catch(e=>console.warn(e));
+function adminDeleteItem(itemId){
+  if(!confirm('Delete this item?'))return;
+  menuData=menuData.filter(i=>i.id!==itemId);saveMenu();renderMenu();renderAdminList();
+  if(firebaseOK&&firebaseDB)firebaseDB.ref('menu/'+itemId).remove().catch(e=>console.warn(e));
   showToast('Item deleted','success');
 }
-function startEditItem(itemId) {
-  document.querySelectorAll('[id^="adm-item-edit-"]').forEach(el=>{ if(el.id!=='adm-item-edit-'+itemId) el.style.display='none'; });
+function startEditItem(itemId){
+  document.querySelectorAll('[id^="adm-item-edit-"]').forEach(el=>{if(el.id!=='adm-item-edit-'+itemId)el.style.display='none';});
   const form=document.getElementById('adm-item-edit-'+itemId);
-  if (form) form.style.display = form.style.display==='none'?'block':'none';
+  if(form)form.style.display=form.style.display==='none'?'block':'none';
 }
-function cancelEditItem(itemId) { const f=document.getElementById('adm-item-edit-'+itemId); if(f) f.style.display='none'; }
-function saveEditItem(itemId) {
-  const item=menuData.find(i=>i.id===itemId); if (!item) return;
-  const name    = (document.getElementById('adm-edit-name-' +itemId)||{}).value?.trim()||item.name;
-  const price   = parseInt((document.getElementById('adm-edit-price-'+itemId)||{}).value,10)||item.price;
-  const cat     = (document.getElementById('adm-edit-cat-'  +itemId)||{}).value||item.cat;
-  const desc    = (document.getElementById('adm-edit-desc-' +itemId)||{}).value?.trim()||'';
-  const preview = document.getElementById('adm-edit-img-preview-'+itemId);
-  if (!name) { showToast('Name required','error'); return; }
-  if (!price){ showToast('Price required','error'); return; }
-  item.name=name; item.price=price; item.cat=cat; item.desc=desc;
-  if (preview && preview.dataset.pending) { item.img=preview.dataset.pending; delete preview.dataset.pending; }
-  saveMenu(); saveMenuItemToFirebase(item); renderMenu(); renderAdminList();
-  showToast('Saved!','success');
+function cancelEditItem(itemId){const f=document.getElementById('adm-item-edit-'+itemId);if(f)f.style.display='none';}
+function saveEditItem(itemId){
+  const item=menuData.find(i=>i.id===itemId);if(!item)return;
+  const name=(document.getElementById('adm-edit-name-'+itemId)||{}).value?.trim()||item.name;
+  const price=parseInt((document.getElementById('adm-edit-price-'+itemId)||{}).value,10)||item.price;
+  const cat=(document.getElementById('adm-edit-cat-'+itemId)||{}).value||item.cat;
+  const desc=(document.getElementById('adm-edit-desc-'+itemId)||{}).value?.trim()||'';
+  const preview=document.getElementById('adm-edit-img-preview-'+itemId);
+  if(!name){showToast('Name required','error');return;}if(!price){showToast('Price required','error');return;}
+  item.name=name;item.price=price;item.cat=cat;item.desc=desc;
+  if(preview&&preview.dataset.pending){item.img=preview.dataset.pending;delete preview.dataset.pending;}
+  saveMenu();saveMenuItemToFirebase(item);renderMenu();renderAdminList();showToast('Saved!','success');
 }
-
-function renderAdminList() {
-  const wrap=document.getElementById('adm-items-list'); const countEl=document.getElementById('adm-count');
-  if (!wrap) return;
-  if (countEl) countEl.textContent=menuData.length;
-  if (!menuData.length) { wrap.innerHTML=`<p class="text-muted small text-center py-3">No menu items yet.</p>`; return; }
-  wrap.innerHTML = menuData.map(item => {
-    const imgSrc   = getItemImage(item);
-    const fallback = CATEGORY_IMAGES[item.cat]||CATEGORY_IMAGES.pizza;
-    const safeName = item.name.replace(/"/g,'&quot;');
-    const safeDesc = (item.desc||'').replace(/"/g,'&quot;');
-    const catOpts  = categories.map(c=>`<option value="${c}"${c===item.cat?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('');
+function renderAdminList(){
+  const wrap=document.getElementById('adm-items-list'),countEl=document.getElementById('adm-count');
+  if(!wrap)return;if(countEl)countEl.textContent=menuData.length;
+  if(!menuData.length){wrap.innerHTML=`<p class="text-muted small text-center py-3">No menu items yet.</p>`;return;}
+  wrap.innerHTML=menuData.map(item=>{
+    const imgSrc=getItemImage(item),fallback=CATEGORY_IMAGES[item.cat]||CATEGORY_IMAGES.pizza;
+    const safeName=item.name.replace(/"/g,'&quot;'),safeDesc=(item.desc||'').replace(/"/g,'&quot;');
+    const catOpts=categories.map(c=>`<option value="${c}"${c===item.cat?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('');
     return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;">
       <img src="${imgSrc}" onerror="this.src='${fallback}'" style="width:48px;height:48px;object-fit:cover;border-radius:10px;flex-shrink:0;border:1px solid #eee;">
       <div style="flex:1;min-width:0;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.name}</div>
         <div><span class="cat-badge">${item.cat}</span>${item.desc?`<span class="ms-1 small text-muted">${item.desc.slice(0,28)}${item.desc.length>28?'…':''}</span>`:''}</div></div>
       <span style="flex-shrink:0;font-weight:700;color:var(--accent);">₹${item.price}</span>
-      <button onclick="startEditItem(${item.id})"   class="adm-edit-btn" style="flex-shrink:0;"><i class="bi bi-pencil-fill"></i></button>
-      <button onclick="adminDeleteItem(${item.id})" class="adm-del-btn"  style="flex-shrink:0;"><i class="bi bi-trash3-fill"></i></button>
+      <button onclick="startEditItem(${item.id})" class="adm-edit-btn" style="flex-shrink:0;"><i class="bi bi-pencil-fill"></i></button>
+      <button onclick="adminDeleteItem(${item.id})" class="adm-del-btn" style="flex-shrink:0;"><i class="bi bi-trash3-fill"></i></button>
       <div id="adm-item-edit-${item.id}" style="display:none;width:100%;padding-top:12px;border-top:1px dashed #eee;margin-top:8px;">
         <div class="row g-2">
-          <div class="col-12"><label class="form-label small fw-bold mb-1">Item Name</label>
-            <input type="text" id="adm-edit-name-${item.id}" class="form-control form-control-sm" value="${safeName}"></div>
-          <div class="col-6"><label class="form-label small fw-bold mb-1">Price (₹)</label>
-            <input type="number" id="adm-edit-price-${item.id}" class="form-control form-control-sm" value="${item.price}" min="1"></div>
-          <div class="col-6"><label class="form-label small fw-bold mb-1">Category</label>
-            <select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOpts}</select></div>
-          <div class="col-12"><label class="form-label small fw-bold mb-1">Description</label>
-            <input type="text" id="adm-edit-desc-${item.id}" class="form-control form-control-sm" value="${safeDesc}"></div>
+          <div class="col-12"><label class="form-label small fw-bold mb-1">Name</label><input type="text" id="adm-edit-name-${item.id}" class="form-control form-control-sm" value="${safeName}"></div>
+          <div class="col-6"><label class="form-label small fw-bold mb-1">Price (₹)</label><input type="number" id="adm-edit-price-${item.id}" class="form-control form-control-sm" value="${item.price}" min="1"></div>
+          <div class="col-6"><label class="form-label small fw-bold mb-1">Category</label><select id="adm-edit-cat-${item.id}" class="form-select form-select-sm">${catOpts}</select></div>
+          <div class="col-12"><label class="form-label small fw-bold mb-1">Description</label><input type="text" id="adm-edit-desc-${item.id}" class="form-control form-control-sm" value="${safeDesc}"></div>
           <div class="col-12">
-            <label class="form-label small fw-bold mb-1">Change Image</label>
+            <label class="form-label small fw-bold mb-1">Image</label>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
               <img id="adm-edit-img-preview-${item.id}" src="${imgSrc}" onerror="this.src='${fallback}'" style="width:60px;height:60px;object-fit:cover;border-radius:10px;border:1px solid #eee;flex-shrink:0;">
               <label style="cursor:pointer;background:#f5f5f5;border:1.5px dashed #ccc;border-radius:10px;padding:8px 14px;font-size:12px;color:#666;">
                 <span id="adm-edit-img-label-${item.id}">📷 Upload</span>
-                <input type="file" id="adm-edit-img-input-${item.id}" accept="image/*" style="display:none;" onchange="handleEditItemImageUpload(event,${item.id})">
+                <input type="file" accept="image/*" style="display:none;" onchange="handleEditItemImageUpload(event,${item.id})">
               </label>
             </div>
             <div style="display:flex;gap:6px;">
@@ -852,7 +794,7 @@ function renderAdminList() {
             </div>
           </div>
           <div class="col-12 d-flex gap-2 mt-1">
-            <button onclick="saveEditItem(${item.id})"   class="btn btn-sm flex-fill" style="background:#e8500a;color:#fff;border:none;border-radius:8px;">💾 Save</button>
+            <button onclick="saveEditItem(${item.id})" class="btn btn-sm flex-fill" style="background:#e8500a;color:#fff;border:none;border-radius:8px;">💾 Save</button>
             <button onclick="cancelEditItem(${item.id})" class="btn btn-sm flex-fill" style="background:#eee;border:none;border-radius:8px;">✕ Cancel</button>
           </div>
         </div>
@@ -862,21 +804,21 @@ function renderAdminList() {
 }
 
 // ── Orders list ───────────────────────────────────────────────────────────
-function renderOrdersList() {
-  const wrap=document.getElementById('adm-orders-list'); if (!wrap) return;
+function renderOrdersList(){
+  const wrap=document.getElementById('adm-orders-list');if(!wrap)return;
   const filter=(document.getElementById('adm-order-filter')||{}).value||'all';
   const filtered=filter==='all'?orders:orders.filter(o=>o.status===filter);
-  const countEl=document.getElementById('adm-orders-count'); if(countEl) countEl.textContent=orders.length;
+  const countEl=document.getElementById('adm-orders-count');if(countEl)countEl.textContent=orders.length;
   const newCount=orders.filter(o=>o.status==='new').length;
   const badge=document.getElementById('adm-new-badge');
   if(badge){badge.textContent=newCount;badge.style.display=newCount>0?'inline-block':'none';}
   const revenue=orders.filter(o=>o.status==='delivered').reduce((s,o)=>s+o.total,0);
   const statsEl=document.getElementById('adm-order-stats');
-  if(statsEl) statsEl.innerHTML=`<div class="adm-stat-pill"><i class="bi bi-receipt me-1"></i><strong>${orders.length}</strong> Total</div>
+  if(statsEl)statsEl.innerHTML=`<div class="adm-stat-pill"><i class="bi bi-receipt me-1"></i><strong>${orders.length}</strong> Total</div>
     <div class="adm-stat-pill new-pill"><i class="bi bi-bell me-1"></i><strong>${newCount}</strong> New</div>
     <div class="adm-stat-pill prep-pill"><i class="bi bi-fire me-1"></i><strong>${orders.filter(o=>o.status==='preparing').length}</strong> Preparing</div>
     <div class="adm-stat-pill done-pill"><i class="bi bi-check2-circle me-1"></i><strong>₹${revenue}</strong> Earned</div>`;
-  if (!filtered.length) { wrap.innerHTML=`<div style="text-align:center;padding:2.5rem 1rem;color:#999;"><i class="bi bi-inbox" style="font-size:2.5rem;display:block;margin-bottom:.75rem;opacity:.4;"></i>No orders found.</div>`; return; }
+  if(!filtered.length){wrap.innerHTML=`<div style="text-align:center;padding:2.5rem 1rem;color:#999;"><i class="bi bi-inbox" style="font-size:2.5rem;display:block;margin-bottom:.75rem;opacity:.4;"></i>No orders found.</div>`;return;}
   const sC={new:'#e8500a',preparing:'#d97706',delivered:'#16a34a'};
   const sB={new:'#fff4f0',preparing:'#fffbeb',delivered:'#f0fdf4'};
   const sL={new:'🆕 New Order',preparing:'🍳 Preparing',delivered:'✅ Delivered'};
@@ -918,91 +860,91 @@ function renderOrdersList() {
     </div>`;
   }).join('');
 }
-
-function updateOrderStatus(orderId, newStatus) {
-  const order=orders.find(o=>o.id===orderId); if(!order) return;
-  order.status=newStatus; saveOrders(); renderOrdersList();
-  if(firebaseOK&&firebaseDB&&order._fbKey) firebaseDB.ref('orders/'+order._fbKey).update({status:newStatus}).catch(e=>console.warn(e));
+function updateOrderStatus(orderId,newStatus){
+  const order=orders.find(o=>o.id===orderId);if(!order)return;
+  order.status=newStatus;saveOrders();renderOrdersList();
+  if(firebaseOK&&firebaseDB&&order._fbKey)firebaseDB.ref('orders/'+order._fbKey).update({status:newStatus}).catch(e=>console.warn(e));
 }
-function deleteOrder(orderId) {
-  if(!confirm('Delete this order?')) return;
+function deleteOrder(orderId){
+  if(!confirm('Delete this order?'))return;
   const order=orders.find(o=>o.id===orderId);
-  orders=orders.filter(o=>o.id!==orderId); saveOrders(); renderOrdersList();
-  if(firebaseOK&&firebaseDB&&order&&order._fbKey) firebaseDB.ref('orders/'+order._fbKey).remove().catch(e=>console.warn(e));
+  orders=orders.filter(o=>o.id!==orderId);saveOrders();renderOrdersList();
+  if(firebaseOK&&firebaseDB&&order&&order._fbKey)firebaseDB.ref('orders/'+order._fbKey).remove().catch(e=>console.warn(e));
 }
-function clearAllOrders() {
-  if(!confirm('Clear ALL delivered orders?')) return;
-  orders=orders.filter(o=>o.status!=='delivered'); saveOrders(); renderOrdersList();
+function clearAllOrders(){
+  if(!confirm('Clear ALL delivered orders?'))return;
+  orders=orders.filter(o=>o.status!=='delivered');saveOrders();renderOrdersList();
 }
 
 // ── Scroll animations ─────────────────────────────────────────────────────
-function observeFadeIn() {
+function observeFadeIn(){
   const obs=new IntersectionObserver(entries=>{
-    entries.forEach((e,i)=>{ if(e.isIntersecting){setTimeout(()=>e.target.classList.add('visible'),i*60);obs.unobserve(e.target);} });
+    entries.forEach((e,i)=>{if(e.isIntersecting){setTimeout(()=>e.target.classList.add('visible'),i*60);obs.unobserve(e.target);}});
   },{threshold:0.1});
   document.querySelectorAll('.fade-in:not(.visible)').forEach(el=>obs.observe(el));
 }
 window.addEventListener('scroll',()=>{
-  const nav=document.getElementById('mainNav'); if(!nav) return;
+  const nav=document.getElementById('mainNav');if(!nav)return;
   nav.style.background=window.scrollY>50?'rgba(26,20,16,0.98)':'rgba(26,20,16,0.95)';
   nav.style.boxShadow=window.scrollY>50?'0 2px 20px rgba(0,0,0,0.3)':'none';
 });
 
 // ── UPI modal ─────────────────────────────────────────────────────────────
-var UPI_ID='9665539828@ibl', UPI_NAME='The Laben Cafe';
-function handlePaymentChange() {
-  const m=document.getElementById('ord-payment').value;
-  document.getElementById('upi-info-hint').style.display=m==='UPI'?'flex':'none';
-  if(m!=='UPI') upiPaymentConfirmed=false;
-}
-function copyUpiId() { navigator.clipboard.writeText(UPI_ID).then(()=>showToast('Copied: '+UPI_ID,'success')); }
-function openUpiModal(amount) {
+var UPI_ID='9665539828@ibl',UPI_NAME='The Laben Cafe';
+function handlePaymentChange(){const m=document.getElementById('ord-payment').value;document.getElementById('upi-info-hint').style.display=m==='UPI'?'flex':'none';if(m!=='UPI')upiPaymentConfirmed=false;}
+function copyUpiId(){navigator.clipboard.writeText(UPI_ID).then(()=>showToast('Copied: '+UPI_ID,'success'));}
+function openUpiModal(amount){
   document.getElementById('upi-display-amount').textContent=amount;
   document.getElementById('upi-id-text').textContent=UPI_ID;
   const link='upi://pay?pa='+UPI_ID+'&pn='+encodeURIComponent(UPI_NAME)+'&am='+amount+'&cu=INR&tn=The%20Laben%20Cafe%20Order';
   document.getElementById('upi-deep-link').href=link;
   document.getElementById('upi-qr-img').src='https://api.qrserver.com/v1/create-qr-code/?size=180x180&data='+encodeURIComponent(link);
-  const u=document.getElementById('upi-utr-input'); if(u) u.value='';
-  const er=document.getElementById('upi-utr-error'); if(er) er.style.display='none';
+  const u=document.getElementById('upi-utr-input');if(u)u.value='';
+  const er=document.getElementById('upi-utr-error');if(er)er.style.display='none';
   document.getElementById('upiModal').classList.add('active');
 }
-function closeUpiModal() { document.getElementById('upiModal').classList.remove('active'); }
-function validateUtrInput() {
-  const i=document.getElementById('upi-utr-input'), e=document.getElementById('upi-utr-error');
-  if(i&&e) e.style.display=(i.value.trim().length>0&&i.value.trim().length<8)?'block':'none';
-}
-function confirmUpiPayment() {
-  const ui=document.getElementById('upi-utr-input'), ue=document.getElementById('upi-utr-error');
-  const uv=ui?ui.value.trim():'';
-  if(!uv||uv.length<8){ if(ue)ue.style.display='block'; if(ui){ui.focus();ui.style.borderColor='#dc2626';ui.style.boxShadow='0 0 0 3px rgba(220,38,38,.15)';setTimeout(()=>{ui.style.borderColor='';ui.style.boxShadow='';},2500);} return; }
-  const name=document.getElementById('ord-name').value.trim();
-  const phone=document.getElementById('ord-phone').value.trim();
-  const address=document.getElementById('ord-address').value.trim();
+function closeUpiModal(){document.getElementById('upiModal').classList.remove('active');}
+function validateUtrInput(){const i=document.getElementById('upi-utr-input'),e=document.getElementById('upi-utr-error');if(i&&e)e.style.display=(i.value.trim().length>0&&i.value.trim().length<8)?'block':'none';}
+function confirmUpiPayment(){
+  const ui=document.getElementById('upi-utr-input'),ue=document.getElementById('upi-utr-error'),uv=ui?ui.value.trim():'';
+  if(!uv||uv.length<8){if(ue)ue.style.display='block';if(ui){ui.focus();ui.style.borderColor='#dc2626';ui.style.boxShadow='0 0 0 3px rgba(220,38,38,.15)';setTimeout(()=>{ui.style.borderColor='';ui.style.boxShadow='';},2500);}return;}
+  const name=document.getElementById('ord-name').value.trim(),phone=document.getElementById('ord-phone').value.trim(),address=document.getElementById('ord-address').value.trim();
   if(!name||!phone||!address){closeUpiModal();alert('Please fill Name, Phone, and Address first.');return;}
   closeUpiModal();
   const note=document.getElementById('ord-note').value;
   const orderId='LBN'+Date.now().toString().slice(-6);
   const timeStr=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
   const newOrder={id:orderId,time:timeStr,timestamp:Date.now(),name,phone,address,payment:'UPI',utrId:uv,note:note||'',items:JSON.parse(JSON.stringify(cart)),total:getCartTotal(),status:'new'};
-  orders.unshift(newOrder); saveOrders(); saveOrderToFirebase(newOrder);
+  orders.unshift(newOrder);saveOrders();saveOrderToFirebase(newOrder);
   showOrderConfirmation(orderId,name,phone,address,'UPI',note,getCartTotal(),uv);
-  clearCart(); document.getElementById('orderForm').reset(); document.getElementById('upi-info-hint').style.display='none';
+  clearCart();document.getElementById('orderForm').reset();document.getElementById('upi-info-hint').style.display='none';
 }
 
-// ── Service worker registration ───────────────────────────────────────────
+// ── Service Worker registration ───────────────────────────────────────────
 if ('serviceWorker' in navigator) {
+  // Attempt registration immediately — works on HTTPS
   navigator.serviceWorker.register('/firebase-messaging-sw.js')
     .then(reg => {
       swRegistration = reg;
-      console.log('✅ SW registered, scope:', reg.scope);
+      console.log('✅ SW registered:', reg.scope);
+
+      // Listen for SW → page messages (e.g. notification tap → open admin)
       navigator.serviceWorker.addEventListener('message', e => {
         if (e.data && e.data.type === 'OPEN_ADMIN') {
           const adminEl = document.getElementById('adminPanel');
           if (adminEl) new bootstrap.Offcanvas(adminEl).show();
         }
       });
+
+      // If notifications were previously enabled, tell the new SW to watch
+      if (localStorage.getItem('laben_notif_enabled') === '1') {
+        messageServiceWorker({ type: 'START_WATCH' });
+      }
     })
-    .catch(err => console.warn('SW registration failed (needs HTTPS):', err));
+    .catch(err => {
+      console.warn('SW registration failed:', err.message);
+      // SW registration failing is expected on HTTP — that's fine
+    });
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
@@ -1010,6 +952,7 @@ refreshMenuTabs();
 renderMenu();
 updateCartUI();
 refreshAdminCatDropdown();
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => { updateNotifStatus(); initFirebase(); });
 } else {
