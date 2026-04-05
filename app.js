@@ -259,7 +259,44 @@ async function enableNotifications() {
     }
   } catch(e) {
     console.error('[SW] Registration error:', e);
-    showToast('❌ Service worker failed. Make sure firebase-messaging-sw.js is at /firebase-messaging-sw.js on your server.', 'error');
+
+    // ── Smart diagnosis ────────────────────────────────────────────────────
+    const el = document.getElementById('notif-status-text');
+    let reason = '';
+    const msg = (e.message || '').toLowerCase();
+
+    if (msg.includes('404') || msg.includes('not found') || msg.includes('load failed') || msg.includes('failed to load')) {
+      reason = '⚠️ <strong>firebase-messaging-sw.js not found on your server.</strong><br><br>' +
+        '➡️ <strong>Fix:</strong> Upload <code>firebase-messaging-sw.js</code> to the <strong>root folder</strong> of your site ' +
+        '(same folder as <code>index.html</code>).<br>' +
+        '<span style="font-size:11px;color:#888;">If you are using Firebase Hosting: run <code>firebase deploy</code>.<br>' +
+        'If you are using cPanel/FTP: upload to <code>public_html/firebase-messaging-sw.js</code>.</span>';
+    } else if (msg.includes('https') || msg.includes('secure')) {
+      reason = '⚠️ <strong>HTTPS required.</strong><br>Service workers only work on <code>https://</code> sites.';
+    } else if (msg.includes('scope') || msg.includes('path')) {
+      reason = '⚠️ <strong>Wrong file path / scope.</strong><br>The file must be at the root: <code>/firebase-messaging-sw.js</code>';
+    } else if (msg.includes('mime') || msg.includes('content-type') || msg.includes('javascript')) {
+      reason = '⚠️ <strong>Wrong MIME type.</strong><br>Your server is not serving the .js file as <code>application/javascript</code>.';
+    } else {
+      reason = '⚠️ <strong>Service worker failed.</strong><br>Error: ' + (e.message || 'unknown') + '<br><br>' +
+        '➡️ Make sure <code>firebase-messaging-sw.js</code> is uploaded to your site root folder.';
+    }
+
+    // Show detailed message in the UI
+    if (el) { el.innerHTML = reason; el.style.color = '#dc2626'; }
+
+    // Try a 404 check to give definitive feedback
+    fetch('/firebase-messaging-sw.js', { method: 'HEAD' })
+      .then(r => {
+        if (!r.ok && el) {
+          el.innerHTML = '❌ <strong>File missing on server (HTTP ' + r.status + ').</strong><br><br>' +
+            '➡️ Upload <code>firebase-messaging-sw.js</code> to your <strong>root folder</strong> (same level as <code>index.html</code>).<br>' +
+            '<span style="font-size:11px;color:#888;">Firebase Hosting root = <code>public/</code> folder.<br>' +
+            'cPanel/FTP root = <code>public_html/</code> folder.</span>';
+          el.style.color = '#dc2626';
+        }
+      }).catch(() => {});
+
     resetBtn(); updateNotifStatus(); return;
   }
 
@@ -336,12 +373,24 @@ function updateNotifStatus() {
     }
     return;
   }
-  // Default: not yet enabled
+  // Default: not yet enabled — silently check if SW file exists
   el.innerHTML='🔔 Tap <strong>Enable</strong> to get new order alerts in the background'; el.style.color='#d97706';
   if (btn) {
     btn.style.display=''; btn.disabled=false;
     btn.innerHTML='<i class="bi bi-bell-fill me-1"></i> Enable Notifications';
     btn.onclick=enableNotifications;
+  }
+  // Background check: is the SW file present?
+  if ('serviceWorker' in navigator && secure) {
+    fetch('/firebase-messaging-sw.js', { method: 'HEAD' })
+      .then(r => {
+        if (!r.ok && el && el.style.color !== '#16a34a') {
+          el.innerHTML = '❌ <strong>Setup needed:</strong> <code>firebase-messaging-sw.js</code> is missing from your server root.<br>' +
+            '<span style="font-size:11px;color:#888;">Upload it to the same folder as <code>index.html</code> (cPanel → <code>public_html/</code> or Firebase → <code>public/</code>).</span>';
+          el.style.color = '#dc2626';
+          if (btn) btn.style.display = 'none';
+        }
+      }).catch(() => {}); // network error — ignore
   }
 }
 
@@ -914,7 +963,18 @@ if ('serviceWorker' in navigator && isSecureContext()) {
       });
       if (notifEnabled) postToSW({ type:'START_WATCH' });
     })
-    .catch(err => console.warn('SW registration failed:', err.message));
+    .catch(err => {
+      // Check if the file actually exists
+      fetch('/firebase-messaging-sw.js', { method: 'HEAD' })
+        .then(r => {
+          if (!r.ok) {
+            console.error('❌ firebase-messaging-sw.js NOT FOUND on server (HTTP ' + r.status + '). Upload it to your site root folder.');
+          } else {
+            console.warn('SW registration failed (file exists):', err.message);
+          }
+        })
+        .catch(() => console.warn('SW registration failed:', err.message));
+    });
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
