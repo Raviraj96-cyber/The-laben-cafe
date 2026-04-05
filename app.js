@@ -1,30 +1,5 @@
 // =====================================================================
-// THE LABEN CAFÉ — app.js  (background notifications, no server key)
-// =====================================================================
-//
-// HOW BACKGROUND NOTIFICATIONS WORK (no server key needed):
-//
-//   1. Admin clicks "Enable Notifications" → browser grants permission
-//      → FCM token saved (for future use) → SW registered
-//
-//   2. When a new order comes in (Firebase DB listener fires):
-//      → Main page sends a message to the SW: { type: 'NEW_ORDER', ... }
-//      → SW shows the notification immediately (works even in background tab)
-//
-//   3. If the tab is COMPLETELY CLOSED (screen off, browser closed):
-//      → The SW's own Firebase DB watcher polls /orders.json every time
-//        a push event arrives, or via Background Sync
-//      → SW detects new orders and shows notifications itself ✅
-//
-// SETUP (one-time):
-//   1. Firebase Console → Cloud Messaging → Web Push certificates
-//      → Generate key pair → paste as FCM_VAPID_KEY below ✅ (already done)
-//   2. Make sure firebase-messaging-sw.js is at your SITE ROOT
-//      (same folder as index.html, e.g. public/firebase-messaging-sw.js
-//       if using Firebase Hosting)
-//   3. Host on HTTPS (Firebase Hosting is free & easiest)
-//   4. Admin panel → Enable Notifications → done ✅
-//
+// THE LABEN CAFÉ — app.js
 // =====================================================================
 
 const FCM_VAPID_KEY = 'BJTbJNtzb3hoiWGpZgyX5sUwgCs7U6qhu6UItw2o0G-uVf22u7xUN96TXRNDMOsh5C8XTJwonBcMNZPZlhOO5ek';
@@ -39,7 +14,6 @@ const FIREBASE_CONFIG = {
   appId:             "1:236045385314:web:a363accd4d0b9f0fe35b3b"
 };
 
-// ── Images ────────────────────────────────────────────────────────────────
 const CATEGORY_IMAGES = {
   coffee:   'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=400&q=80',
   fries:    'https://images.unsplash.com/photo-1585325701956-60dd9c8553bc?w=400&q=80',
@@ -71,7 +45,6 @@ const LOCAL_ITEM_IMAGES = {
   'Cheese Corn Maggi':                  'Cheese_Corn_Maggi.jpg',
   'Cheese Chilli Maggi':                'Cheese_Chilli_Maggi.webp',
 };
-
 const DEFAULT_MENU = [
   { id:1,  name:'Cold Coffee With Crush',             desc:'Refreshing cold coffee with crush syrup',          price:70,  cat:'coffee',   img:'' },
   { id:2,  name:'Cold Coffee With Icecream',          desc:'Chilled coffee topped with a scoop of ice cream',  price:80,  cat:'coffee',   img:'' },
@@ -113,7 +86,7 @@ let firebaseOK      = false;
 let fcmToken        = null;
 let swRegistration  = null;
 let fbListenerReady = false;
-let notifEnabled    = false; // true once permission granted + SW ready
+let notifEnabled    = localStorage.getItem('laben_notif_enabled') === '1';
 
 function _loadSeen() {
   try { const s = localStorage.getItem('laben_seen_ids'); if (s) return new Set(JSON.parse(s)); } catch(e) {}
@@ -142,11 +115,35 @@ function showToast(msg, type) {
 
 // ── Timeout helper ────────────────────────────────────────────────────────
 function _timeout(ms) {
-  return new Promise((_,reject) => setTimeout(() => reject(new Error('timeout')), ms));
+  return new Promise((_,r) => setTimeout(() => r(new Error('timeout')), ms));
 }
 
-// ── Show notification via SW ──────────────────────────────────────────────
-function showViaServiceWorker(title, body, orderId) {
+// ── Is the site on HTTPS? ─────────────────────────────────────────────────
+function isSecureContext() {
+  return location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+}
+
+// ── Post message to active Service Worker ─────────────────────────────────
+function postToSW(data) {
+  // Try via controller first (most reliable on mobile)
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage(data);
+    return;
+  }
+  // Fall back to registration
+  if (swRegistration && swRegistration.active) {
+    swRegistration.active.postMessage(data);
+    return;
+  }
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(reg => {
+      if (reg.active) reg.active.postMessage(data);
+    }).catch(() => {});
+  }
+}
+
+// ── Show notification (foreground fallback) ───────────────────────────────
+function showDirectNotification(title, body, orderId) {
   if (Notification.permission !== 'granted') return;
   const opts = {
     body, icon:'/icon-192.png', badge:'/icon-72.png',
@@ -155,13 +152,9 @@ function showViaServiceWorker(title, body, orderId) {
     data:{ url:'/?openAdmin=1', orderId:orderId||'' },
     actions:[{ action:'view', title:'👀 View Order' },{ action:'dismiss', title:'✕ Dismiss' }]
   };
+  // Use SW to show notification (works on mobile)
   if (swRegistration) {
-    swRegistration.showNotification(title, opts).catch(err => {
-      console.warn('[NOTIF] SW show failed:', err);
-      try { new Notification(title, { body, icon:'/icon-192.png' }); } catch(e){}
-    });
-  } else if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(() => {
+    swRegistration.showNotification(title, opts).catch(() => {
       try { new Notification(title, { body, icon:'/icon-192.png' }); } catch(e){}
     });
   } else {
@@ -169,36 +162,26 @@ function showViaServiceWorker(title, body, orderId) {
   }
 }
 
-// ── Send message to SW ────────────────────────────────────────────────────
-function messageServiceWorker(data) {
-  if (swRegistration && swRegistration.active) {
-    swRegistration.active.postMessage(data);
-  } else if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready.then(reg => {
-      if (reg.active) reg.active.postMessage(data);
-    }).catch(()=>{});
-  }
-}
+// ── Trigger notification for a new order ─────────────────────────────────
+function notifyNewOrder(order) {
+  if (!notifEnabled && localStorage.getItem('laben_notif_enabled') !== '1') return;
+  if (Notification.permission !== 'granted') return;
 
-// ── Trigger order notification ────────────────────────────────────────────
-// Called when Firebase DB listener detects a new order.
-// Tells SW to show notification — works even if tab is in background.
-function triggerOrderNotification(order) {
   const title = '🛎️ New Order #' + order.id + ' — The Laben Café';
-  const body  = (order.name||'Customer') + ' ordered ₹' + (order.total||'?') + ' via ' + (order.payment||'COD');
+  const body  = (order.name||'Customer') + ' · ₹' + (order.total||'?') + ' · ' + (order.payment||'COD');
 
-  // Tell SW to show notification (works when tab is in background)
-  messageServiceWorker({ type:'NEW_ORDER', title, body, orderId: order.id });
-
-  // Also show directly for when tab is in foreground
-  showViaServiceWorker(title, body, order.id);
+  // Send to SW (works even when tab is in background on Android)
+  postToSW({ type:'NEW_ORDER', title, body, orderId: order.id });
+  // Also show directly as backup
+  showDirectNotification(title, body, order.id);
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// ENABLE NOTIFICATIONS
+// ENABLE NOTIFICATIONS — called when admin clicks the button
 // ══════════════════════════════════════════════════════════════════════
 async function enableNotifications() {
   const btn = document.getElementById('notif-enable-btn');
+
   function resetBtn() {
     if (!btn) return;
     btn.disabled  = false;
@@ -206,68 +189,86 @@ async function enableNotifications() {
     btn.onclick   = enableNotifications;
   }
 
-  // 1. Need Notification API
+  // ── 1. Must have Notification API ─────────────────────────────────────
   if (!('Notification' in window)) {
     showToast('❌ Notifications not supported in this browser', 'error');
     updateNotifStatus(); return;
   }
 
-  // 2. Need HTTPS
-  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
-  if (!isSecure) {
-    showToast('⚠️ Notifications require HTTPS. Host on Firebase Hosting or GitHub Pages.', 'warning');
-    updateNotifStatus(); return;
+  // ── 2. Must be HTTPS ──────────────────────────────────────────────────
+  if (!isSecureContext()) {
+    // Show clear message — don't show vague "SW failed"
+    const el = document.getElementById('notif-status-text');
+    if (el) {
+      el.innerHTML = '❌ <strong>HTTPS required!</strong><br>Your site is on HTTP. Push notifications only work on HTTPS.<br><br>➡️ Deploy to <strong>Firebase Hosting</strong> (free):<br><code style="font-size:11px;background:#f5f5f5;padding:2px 6px;border-radius:4px;">firebase deploy</code><br>or use <strong>GitHub Pages</strong> / <strong>Vercel</strong>.';
+      el.style.color = '#dc2626';
+    }
+    if (btn) btn.style.display = 'none';
+    return;
   }
 
-  // 3. Check SW support
+  // ── 3. Must have Service Worker support ───────────────────────────────
   if (!('serviceWorker' in navigator)) {
     showToast('❌ Service Workers not supported in this browser', 'error');
     updateNotifStatus(); return;
   }
 
-  // 4. Request notification permission
-  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Requesting permission…'; }
+  // ── 4. Request notification permission ────────────────────────────────
+  if (btn) { btn.disabled=true; btn.innerHTML='⏳ Waiting for permission…'; }
 
   let perm;
   try { perm = await Promise.race([Notification.requestPermission(), _timeout(15000)]); }
   catch(e) { perm = Notification.permission; }
 
   if (perm !== 'granted') {
-    showToast('❌ Permission denied. Tap the 🔒 icon in the address bar → Allow notifications.', 'error');
+    showToast('❌ Permission denied. Tap the lock icon 🔒 in the address bar → Allow notifications.', 'error');
     resetBtn(); updateNotifStatus(); return;
   }
 
-  // 5. Register / get SW
-  if (btn) { btn.innerHTML = '⏳ Loading service worker…'; }
+  // ── 5. Register Service Worker ────────────────────────────────────────
+  if (btn) { btn.innerHTML='⏳ Loading service worker…'; }
+
   try {
-    // Try to register the SW if not already registered
-    if (!swRegistration) {
-      swRegistration = await Promise.race([
-        navigator.serviceWorker.register('/firebase-messaging-sw.js'),
-        _timeout(10000)
-      ]);
-    }
-    // Wait for it to be active
-    if (swRegistration.installing || swRegistration.waiting) {
+    // Register with explicit path
+    const reg = await Promise.race([
+      navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope:'/' }),
+      _timeout(10000)
+    ]);
+    swRegistration = reg;
+
+    // Wait for activation
+    if (reg.installing || reg.waiting) {
       await Promise.race([
         new Promise(resolve => {
-          const sw = swRegistration.installing || swRegistration.waiting;
-          sw.addEventListener('statechange', e => { if (e.target.state === 'activated') resolve(); });
+          const sw = reg.installing || reg.waiting;
+          sw.addEventListener('statechange', e => {
+            if (e.target.state === 'activated') resolve();
+          });
         }),
         _timeout(8000)
       ]);
     }
+    // Ensure controller is set
+    if (!navigator.serviceWorker.controller) {
+      await Promise.race([
+        new Promise(resolve => {
+          navigator.serviceWorker.addEventListener('controllerchange', resolve, { once:true });
+        }),
+        _timeout(5000)
+      ]).catch(() => {});
+    }
   } catch(e) {
-    console.error('[SW] Registration failed:', e);
-    showToast('❌ Service worker failed. Check that firebase-messaging-sw.js is at your site root (/firebase-messaging-sw.js).', 'error');
+    console.error('[SW] Registration error:', e);
+    showToast('❌ Service worker failed. Make sure firebase-messaging-sw.js is at /firebase-messaging-sw.js on your server.', 'error');
     resetBtn(); updateNotifStatus(); return;
   }
 
-  // 6. Get FCM token (for future push via FCM console)
-  if (btn) { btn.innerHTML = '⏳ Registering device…'; }
+  // ── 6. Get FCM token ──────────────────────────────────────────────────
+  if (btn) { btn.innerHTML='⏳ Registering device…'; }
+
   if (firebaseMsg) {
     try {
-      const activeReg = swRegistration.active ? swRegistration : await navigator.serviceWorker.ready;
+      const activeReg = await Promise.race([navigator.serviceWorker.ready, _timeout(5000)]);
       const token = await Promise.race([
         firebaseMsg.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: activeReg }),
         _timeout(10000)
@@ -277,32 +278,26 @@ async function enableNotifications() {
         localStorage.setItem('laben_fcm_token', token);
         if (firebaseOK && firebaseDB) {
           firebaseDB.ref('fcm_tokens/' + token.slice(-20)).set({
-            token, device: navigator.userAgent.slice(0, 100), timestamp: Date.now()
-          }).catch(e => console.warn('[FCM] Token save:', e));
+            token, device: navigator.userAgent.slice(0,100), timestamp: Date.now()
+          }).catch(()=>{});
         }
         console.log('✅ FCM token:', token.slice(0,30)+'…');
       }
     } catch(e) {
-      console.warn('[FCM] Token failed (non-critical, SW notifications still work):', e.message);
-      // Not fatal — SW-based notifications still work without FCM token
+      console.warn('[FCM] Token failed (SW notifications still work):', e.message);
     }
   }
 
-  // 7. Tell SW to start watching DB
+  // ── 7. Done ───────────────────────────────────────────────────────────
   notifEnabled = true;
   localStorage.setItem('laben_notif_enabled', '1');
-  messageServiceWorker({ type: 'START_WATCH' });
+  postToSW({ type:'START_WATCH' });
 
   showToast('🔔 Done! You will get order alerts even when this tab is in the background.', 'success');
-
-  // Test notification
-  setTimeout(() => {
-    showViaServiceWorker(
-      '✅ Notifications Active — The Laben Café',
-      'New order alerts are ON. You will be notified even in background! 🛎️',
-      ''
-    );
-  }, 600);
+  setTimeout(() => showDirectNotification(
+    '✅ Notifications Active — The Laben Café',
+    'Background alerts ON. New orders will wake your phone! 🛎️', ''
+  ), 700);
 
   resetBtn();
   updateNotifStatus();
@@ -314,39 +309,39 @@ function updateNotifStatus() {
   const btn = document.getElementById('notif-enable-btn');
   if (!el) return;
 
-  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
-  const enabled  = notifEnabled || localStorage.getItem('laben_notif_enabled') === '1';
+  const secure  = isSecureContext();
+  const enabled = notifEnabled || localStorage.getItem('laben_notif_enabled') === '1';
 
   if (!('Notification' in window)) {
-    el.innerHTML = '❌ Notifications not supported in this browser'; el.style.color = '#dc2626';
-    if (btn) btn.style.display = 'none'; return;
+    el.innerHTML='❌ Notifications not supported in this browser'; el.style.color='#dc2626';
+    if (btn) btn.style.display='none'; return;
   }
-  if (!isSecure) {
-    el.innerHTML = '⚠️ <strong>HTTPS required</strong> — Host on Firebase Hosting or GitHub Pages for push notifications.'; el.style.color = '#d97706';
-    if (btn) btn.style.display = 'none'; return;
+  if (!secure) {
+    el.innerHTML='❌ <strong>HTTPS required</strong> — Notifications only work on https:// sites. Deploy to Firebase Hosting, GitHub Pages, or Vercel (all free).'; el.style.color='#dc2626';
+    if (btn) btn.style.display='none'; return;
   }
   if (Notification.permission === 'denied') {
-    el.innerHTML = '❌ <strong>Blocked</strong> — Tap the 🔒 icon in the address bar → Site settings → Notifications → Allow → then reload.'; el.style.color = '#dc2626';
-    if (btn) btn.style.display = 'none'; return;
+    el.innerHTML='❌ <strong>Blocked</strong> — Tap the 🔒 lock in the address bar → Site settings → Notifications → Allow → then reload.'; el.style.color='#dc2626';
+    if (btn) btn.style.display='none'; return;
   }
   if (Notification.permission === 'granted' && enabled) {
-    el.innerHTML = '✅ <strong>Active</strong> — You will receive order alerts even when this tab is in the background 🔔'; el.style.color = '#16a34a';
+    el.innerHTML='✅ <strong>Active</strong> — You will receive order alerts even when this tab is in the background 🔔'; el.style.color='#16a34a';
     if (btn) {
-      btn.style.display = ''; btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-bell-slash me-1"></i> Disable';
-      btn.onclick = () => {
-        notifEnabled = false; localStorage.removeItem('laben_notif_enabled');
-        showToast('🔕 Notifications disabled', 'info'); updateNotifStatus();
+      btn.style.display=''; btn.disabled=false;
+      btn.innerHTML='<i class="bi bi-bell-slash me-1"></i> Disable';
+      btn.onclick=() => {
+        notifEnabled=false; localStorage.removeItem('laben_notif_enabled');
+        showToast('🔕 Notifications disabled','info'); updateNotifStatus();
       };
     }
     return;
   }
   // Default: not yet enabled
-  el.innerHTML = '🔔 Tap <strong>Enable</strong> to get new order alerts even when this tab is in the background'; el.style.color = '#d97706';
+  el.innerHTML='🔔 Tap <strong>Enable</strong> to get new order alerts in the background'; el.style.color='#d97706';
   if (btn) {
-    btn.style.display = ''; btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-bell-fill me-1"></i> Enable Notifications';
-    btn.onclick = enableNotifications;
+    btn.style.display=''; btn.disabled=false;
+    btn.innerHTML='<i class="bi bi-bell-fill me-1"></i> Enable Notifications';
+    btn.onclick=enableNotifications;
   }
 }
 
@@ -360,21 +355,20 @@ function initFirebase() {
     firebaseOK = true;
     if (firebase.storage) firebaseStorage = firebase.storage();
 
-    // FCM (HTTPS only)
-    if (firebase.messaging && firebase.messaging.isSupported()) {
+    // FCM (only works on HTTPS)
+    if (isSecureContext() && firebase.messaging && firebase.messaging.isSupported()) {
       try {
         firebaseMsg = firebase.messaging();
         firebaseMsg.onMessage(payload => {
-          const data  = payload.data  || {};
-          const notif = payload.notification || {};
-          const title = data.title || notif.title || '🛎️ New Order!';
-          const body  = data.body  || notif.body  || 'A new order arrived.';
-          showToast('🛎️ ' + body, 'info');
-          showViaServiceWorker(title, body, data.orderId||'');
+          const d=payload.data||{}, n=payload.notification||{};
+          const title=d.title||n.title||'🛎️ New Order!';
+          const body=d.body||n.body||'A new order arrived.';
+          showToast('🛎️ '+body,'info');
+          showDirectNotification(title, body, d.orderId||'');
         });
-      } catch(e) { console.warn('[FCM] Init:', e.message); firebaseMsg = null; }
+      } catch(e) { console.warn('[FCM]',e.message); firebaseMsg=null; }
     } else {
-      firebaseMsg = null;
+      firebaseMsg=null;
     }
 
     updateNotifStatus();
@@ -383,128 +377,113 @@ function initFirebase() {
     // ── Orders listener ───────────────────────────────────────────────────
     firebaseDB.ref('orders').on('value', snapshot => {
       const raw = snapshot.val();
-      if (!raw) { fbListenerReady = true; return; }
+      if (!raw) { fbListenerReady=true; return; }
 
       const fbArr = Object.entries(raw)
         .map(([k,v]) => ({ ...v, _fbKey:k }))
-        .sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+        .sort((a,b) => (b.timestamp||0)-(a.timestamp||0));
 
       const newOrders = [];
       fbArr.forEach(fbO => {
-        const local = orders.find(o => o.id === fbO.id);
+        const local = orders.find(o => o.id===fbO.id);
         if (!local) {
           orders.unshift(fbO);
           if (fbListenerReady && !seenIds.has(fbO.id)) newOrders.push(fbO);
           seenIds.add(fbO.id);
-        } else { local.status = fbO.status; local._fbKey = fbO._fbKey; }
+        } else { local.status=fbO.status; local._fbKey=fbO._fbKey; }
       });
 
-      fbListenerReady = true;
-      saveOrders(); _saveSeen();
+      fbListenerReady=true; saveOrders(); _saveSeen();
+      const dash=document.getElementById('admin-dashboard');
+      if (dash && dash.style.display!=='none') renderOrdersList();
 
-      const dash = document.getElementById('admin-dashboard');
-      if (dash && dash.style.display !== 'none') renderOrdersList();
-
-      // Notify for each new order
       newOrders.forEach(o => {
-        showToast('🛎️ New order from ' + (o.name||'customer') + '!', 'info');
-        if (notifEnabled || localStorage.getItem('laben_notif_enabled') === '1') {
-          triggerOrderNotification(o);
-        }
+        showToast('🛎️ New order from '+(o.name||'customer')+'!','info');
+        notifyNewOrder(o);
       });
 
-    }, err => showToast('❌ Firebase error: ' + err.message, 'error'));
+    }, err => showToast('❌ Firebase: '+err.message,'error'));
 
     // ── Categories sync ───────────────────────────────────────────────────
     firebaseDB.ref('categories').on('value', snap => {
-      const d = snap.val();
-      if (d && Array.isArray(d)) { categories = d; saveCategories(); refreshMenuTabs(); refreshAdminCatDropdown(); }
+      const d=snap.val();
+      if (d && Array.isArray(d)) { categories=d; saveCategories(); refreshMenuTabs(); refreshAdminCatDropdown(); }
     });
 
     // ── Menu sync ─────────────────────────────────────────────────────────
     firebaseDB.ref('menu').on('value', snap => {
-      const d = snap.val(); if (!d) return;
-      const fbMenu = Array.isArray(d) ? d : Object.values(d);
-      if (!fbMenu.length) return;
-      fbMenu.forEach(fbItem => {
-        const local = menuData.find(i => i.id === fbItem.id);
-        if (local) { if (fbItem.img) local.img = fbItem.img; } else menuData.push(fbItem);
-      });
+      const d=snap.val(); if(!d) return;
+      const m=Array.isArray(d)?d:Object.values(d); if(!m.length) return;
+      m.forEach(fi => { const l=menuData.find(i=>i.id===fi.id); if(l){if(fi.img)l.img=fi.img;}else menuData.push(fi); });
       saveMenu(); renderMenu();
     });
 
-    // Restore notification state
-    if (localStorage.getItem('laben_notif_enabled') === '1') {
-      notifEnabled = true;
-      fcmToken = localStorage.getItem('laben_fcm_token') || null;
-      // Tell the already-registered SW to start watching
-      messageServiceWorker({ type: 'START_WATCH' });
-    }
+    // Restore saved FCM token
+    const saved=localStorage.getItem('laben_fcm_token');
+    if (saved) fcmToken=saved;
+    if (notifEnabled && swRegistration) postToSW({ type:'START_WATCH' });
     updateNotifStatus();
 
-    // Open admin if coming from notification tap
     if (window.location.search.includes('openAdmin=1')) {
-      setTimeout(() => { const el = document.getElementById('adminPanel'); if (el) new bootstrap.Offcanvas(el).show(); }, 800);
+      setTimeout(()=>{ const e=document.getElementById('adminPanel'); if(e) new bootstrap.Offcanvas(e).show(); },800);
     }
-
   } catch(e) {
-    console.error('Firebase init error:', e);
-    showToast('⚠️ Firebase failed: ' + e.message, 'error');
+    console.error('Firebase init error:',e);
+    showToast('⚠️ Firebase failed: '+e.message,'error');
     updateNotifStatus();
   }
 }
 
-// ── Firebase write helpers ────────────────────────────────────────────────
 function saveOrderToFirebase(order) {
-  if (!firebaseOK || !firebaseDB) return;
+  if(!firebaseOK||!firebaseDB) return;
   seenIds.add(order.id); _saveSeen();
   firebaseDB.ref('orders').push(order)
-    .then(() => showToast('✅ Order saved to cloud!', 'success'))
-    .catch(() => showToast('❌ Firebase write failed!', 'error'));
+    .then(()=>showToast('✅ Order saved to cloud!','success'))
+    .catch(()=>showToast('❌ Firebase write failed!','error'));
 }
 function saveMenuItemToFirebase(item) {
-  if (!firebaseOK || !firebaseDB) return;
-  firebaseDB.ref('menu/' + item.id).set(item).catch(e => console.warn('Menu save:', e));
+  if(!firebaseOK||!firebaseDB) return;
+  firebaseDB.ref('menu/'+item.id).set(item).catch(e=>console.warn(e));
 }
 function saveCategoriesToFirebase() {
-  if (!firebaseOK || !firebaseDB) return;
-  firebaseDB.ref('categories').set(categories).catch(e => console.warn('Cat save:', e));
+  if(!firebaseOK||!firebaseDB) return;
+  firebaseDB.ref('categories').set(categories).catch(e=>console.warn(e));
 }
 
 // ── Image helpers ─────────────────────────────────────────────────────────
 function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        const MAX = 400; let w = img.width, h = img.height;
-        if (w > MAX) { h = Math.round(h*MAX/w); w = MAX; }
-        if (h > MAX) { w = Math.round(w*MAX/h); h = MAX; }
-        const c = document.createElement('canvas'); c.width=w; c.height=h;
+  return new Promise((res,rej) => {
+    const reader=new FileReader();
+    reader.onload=e => {
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=400; let w=img.width,h=img.height;
+        if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+        if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
         c.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(c.toDataURL('image/jpeg',0.75));
+        res(c.toDataURL('image/jpeg',0.75));
       };
-      img.onerror = reject; img.src = e.target.result;
+      img.onerror=rej; img.src=e.target.result;
     };
-    reader.onerror = reject; reader.readAsDataURL(file);
+    reader.onerror=rej; reader.readAsDataURL(file);
   });
 }
 function getItemImage(item) {
-  if (item.img && item.img.length > 10) return item.img;
-  return LOCAL_ITEM_IMAGES[item.name] || CATEGORY_IMAGES[item.cat] || CATEGORY_IMAGES.pizza;
+  if(item.img&&item.img.length>10) return item.img;
+  return LOCAL_ITEM_IMAGES[item.name]||CATEGORY_IMAGES[item.cat]||CATEGORY_IMAGES.pizza;
 }
 
 // ── Menu tabs ─────────────────────────────────────────────────────────────
 function refreshMenuTabs() {
-  const tabsEl = document.getElementById('menuTabs'); if (!tabsEl) return;
-  const icons = { coffee:'☕', fries:'🍟', sandwich:'🥪', pizza:'🍕', burger:'🍔', maggi:'🍜' };
-  tabsEl.innerHTML = ['all',...categories].map(cat => {
-    const label = cat==='all'?'All Items':cat.charAt(0).toUpperCase()+cat.slice(1);
+  const tabsEl=document.getElementById('menuTabs'); if(!tabsEl) return;
+  const icons={coffee:'☕',fries:'🍟',sandwich:'🥪',pizza:'🍕',burger:'🍔',maggi:'🍜'};
+  tabsEl.innerHTML=['all',...categories].map(cat=>{
+    const label=cat==='all'?'All Items':cat.charAt(0).toUpperCase()+cat.slice(1);
     return `<li class="nav-item"><button class="menu-tab${cat===currentCat?' active':''}" data-cat="${cat}">${icons[cat]?icons[cat]+' ':''}${label}</button></li>`;
   }).join('');
-  tabsEl.querySelectorAll('.menu-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
+  tabsEl.querySelectorAll('.menu-tab').forEach(btn=>{
+    btn.addEventListener('click',()=>{
       tabsEl.querySelectorAll('.menu-tab').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active'); currentCat=btn.dataset.cat; renderMenu();
     });
@@ -513,18 +492,18 @@ function refreshMenuTabs() {
 
 // ── Render menu ───────────────────────────────────────────────────────────
 function renderMenu() {
-  const grid = document.getElementById('menu-grid'); if (!grid) return;
-  const items = currentCat==='all' ? menuData : menuData.filter(i=>i.cat===currentCat);
-  if (!items.length) { grid.innerHTML=`<div class="col-12 text-center text-muted py-5"><i class="bi bi-search fs-2 d-block mb-2"></i>No items in this category.</div>`; return; }
-  grid.innerHTML = items.map(item => {
-    const imgSrc=getItemImage(item); const fallback=CATEGORY_IMAGES[item.cat]||CATEGORY_IMAGES.pizza;
+  const grid=document.getElementById('menu-grid'); if(!grid) return;
+  const items=currentCat==='all'?menuData:menuData.filter(i=>i.cat===currentCat);
+  if(!items.length){grid.innerHTML=`<div class="col-12 text-center text-muted py-5"><i class="bi bi-search fs-2 d-block mb-2"></i>No items in this category.</div>`;return;}
+  grid.innerHTML=items.map(item=>{
+    const imgSrc=getItemImage(item),fallback=CATEGORY_IMAGES[item.cat]||CATEGORY_IMAGES.pizza;
     const catLabel=item.cat.charAt(0).toUpperCase()+item.cat.slice(1);
     return `<div class="col-6 col-md-4 col-lg-3 fade-in"><div class="menu-card">
       <div class="menu-card-img"><img src="${imgSrc}" alt="${item.name}" loading="lazy" onerror="this.onerror=null;this.src='${fallback}';"><span class="menu-card-cat">${catLabel}</span></div>
       <div class="menu-card-body"><div class="menu-card-name">${item.name}</div><div class="menu-card-desc">${item.desc}</div>
         <div class="menu-card-footer"><span class="menu-card-price">₹${item.price}</span>
-          <button class="btn-add-cart" onclick="addToCart(${item.id})"><i class="bi bi-plus-lg"></i></button></div>
-      </div></div></div>`;
+          <button class="btn-add-cart" onclick="addToCart(${item.id})"><i class="bi bi-plus-lg"></i></button>
+        </div></div></div></div>`;
   }).join('');
   observeFadeIn();
 }
@@ -548,7 +527,7 @@ function updateCartUI() {
   const qty=cart.reduce((s,c)=>s+c.qty,0);
   document.getElementById('cart-count').textContent=qty;
   const list=document.getElementById('cart-items-list');
-  if (!cart.length) {
+  if(!cart.length){
     list.innerHTML=`<div class="cart-empty"><i class="bi bi-bag-x"></i>Your cart is empty.<br><small class="text-muted">Add items from the menu!</small></div>`;
   } else {
     list.innerHTML=cart.map(c=>`<div class="cart-item-row">
@@ -563,10 +542,10 @@ function updateCartUI() {
   }
   document.getElementById('cart-total').textContent=getCartTotal();
   const sb=document.getElementById('order-summary-box'); if(!sb) return;
-  if(!cart.length) { sb.innerHTML=`<p class="mb-0 text-muted">Your cart is empty. Add items from the menu above.</p>`; }
-  else { sb.innerHTML=`<strong class="d-block mb-2"><i class="bi bi-bag me-1"></i>Order Summary</strong>
+  if(!cart.length){sb.innerHTML=`<p class="mb-0 text-muted">Your cart is empty. Add items from the menu above.</p>`;}
+  else{sb.innerHTML=`<strong class="d-block mb-2"><i class="bi bi-bag me-1"></i>Order Summary</strong>
     ${cart.map(c=>`<div class="d-flex justify-content-between"><span>${c.name} × ${c.qty}</span><span>₹${c.price*c.qty}</span></div>`).join('')}
-    <hr class="my-2"><div class="d-flex justify-content-between fw-bold"><span>Total</span><span style="color:var(--accent)">₹${getCartTotal()}</span></div>`; }
+    <hr class="my-2"><div class="d-flex justify-content-between fw-bold"><span>Total</span><span style="color:var(--accent)">₹${getCartTotal()}</span></div>`;}
 }
 function showAddedFeedback(itemId) {
   const btn=document.querySelector(`.btn-add-cart[onclick="addToCart(${itemId})"]`); if(!btn) return;
@@ -612,9 +591,9 @@ function showOrderConfirmation(orderId,name,phone,address,payment,note,total,utr
   conf.scrollIntoView({behavior:'smooth'});
 }
 
-// ── Admin auth ────────────────────────────────────────────────────────────
+// ── Admin ─────────────────────────────────────────────────────────────────
 function adminLogin() {
-  const u=document.getElementById('adm-user').value, p=document.getElementById('adm-pass').value;
+  const u=document.getElementById('adm-user').value,p=document.getElementById('adm-pass').value;
   if(u==='admin'&&p==='laben123'){
     document.getElementById('admin-login-wrap').style.display='none';
     document.getElementById('admin-dashboard').style.display='block';
@@ -629,7 +608,7 @@ function adminLogout() {
 function switchAdminTab(tab) {
   document.querySelectorAll('.adm-tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('adm-tab-'+tab).classList.add('active');
-  ['orders','menu','catmgr'].forEach(t=>{ document.getElementById('adm-panel-'+t).style.display=t===tab?'block':'none'; });
+  ['orders','menu','catmgr'].forEach(t=>{document.getElementById('adm-panel-'+t).style.display=t===tab?'block':'none';});
   if(tab==='orders') renderOrdersList();
   if(tab==='menu')   renderAdminList();
   if(tab==='catmgr') renderCategoryManager();
@@ -694,7 +673,7 @@ function deleteCategory(cat){
 
 // ── Image handlers ────────────────────────────────────────────────────────
 async function handleNewItemImageUpload(event){
-  const file=event.target.files[0]; if(!file) return;
+  const file=event.target.files[0];if(!file)return;
   try{const b64=await fileToBase64(file);pendingNewItemImg=b64;
     const p=document.getElementById('adm-new-img-preview'),l=document.getElementById('adm-new-img-label');
     if(p){p.src=b64;p.style.display='block';}if(l)l.textContent='✅ '+file.name.slice(0,18);
@@ -705,7 +684,7 @@ function applyNewUrlImage(){
   if(!url){showToast('Enter a URL','error');return;}pendingNewItemImg=url;showToast('✅ Image URL set','success');
 }
 async function handleEditItemImageUpload(event,itemId){
-  const file=event.target.files[0]; if(!file) return;
+  const file=event.target.files[0];if(!file)return;
   try{const b64=await fileToBase64(file);
     const p=document.getElementById('adm-edit-img-preview-'+itemId),l=document.getElementById('adm-edit-img-label-'+itemId);
     if(p){p.src=b64;p.dataset.pending=b64;}if(l)l.textContent='✅ '+file.name.slice(0,18);
@@ -737,7 +716,7 @@ function adminAddItem(){
 function adminDeleteItem(itemId){
   if(!confirm('Delete this item?'))return;
   menuData=menuData.filter(i=>i.id!==itemId);saveMenu();renderMenu();renderAdminList();
-  if(firebaseOK&&firebaseDB)firebaseDB.ref('menu/'+itemId).remove().catch(e=>console.warn(e));
+  if(firebaseOK&&firebaseDB)firebaseDB.ref('menu/'+itemId).remove().catch(()=>{});
   showToast('Item deleted','success');
 }
 function startEditItem(itemId){
@@ -863,13 +842,13 @@ function renderOrdersList(){
 function updateOrderStatus(orderId,newStatus){
   const order=orders.find(o=>o.id===orderId);if(!order)return;
   order.status=newStatus;saveOrders();renderOrdersList();
-  if(firebaseOK&&firebaseDB&&order._fbKey)firebaseDB.ref('orders/'+order._fbKey).update({status:newStatus}).catch(e=>console.warn(e));
+  if(firebaseOK&&firebaseDB&&order._fbKey)firebaseDB.ref('orders/'+order._fbKey).update({status:newStatus}).catch(()=>{});
 }
 function deleteOrder(orderId){
   if(!confirm('Delete this order?'))return;
   const order=orders.find(o=>o.id===orderId);
   orders=orders.filter(o=>o.id!==orderId);saveOrders();renderOrdersList();
-  if(firebaseOK&&firebaseDB&&order&&order._fbKey)firebaseDB.ref('orders/'+order._fbKey).remove().catch(e=>console.warn(e));
+  if(firebaseOK&&firebaseDB&&order&&order._fbKey)firebaseDB.ref('orders/'+order._fbKey).remove().catch(()=>{});
 }
 function clearAllOrders(){
   if(!confirm('Clear ALL delivered orders?'))return;
@@ -921,30 +900,21 @@ function confirmUpiPayment(){
 }
 
 // ── Service Worker registration ───────────────────────────────────────────
-if ('serviceWorker' in navigator) {
-  // Attempt registration immediately — works on HTTPS
-  navigator.serviceWorker.register('/firebase-messaging-sw.js')
+// Only attempt on HTTPS — silently skip on HTTP
+if ('serviceWorker' in navigator && isSecureContext()) {
+  navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope:'/' })
     .then(reg => {
       swRegistration = reg;
       console.log('✅ SW registered:', reg.scope);
-
-      // Listen for SW → page messages (e.g. notification tap → open admin)
       navigator.serviceWorker.addEventListener('message', e => {
         if (e.data && e.data.type === 'OPEN_ADMIN') {
-          const adminEl = document.getElementById('adminPanel');
-          if (adminEl) new bootstrap.Offcanvas(adminEl).show();
+          const el=document.getElementById('adminPanel');
+          if(el) new bootstrap.Offcanvas(el).show();
         }
       });
-
-      // If notifications were previously enabled, tell the new SW to watch
-      if (localStorage.getItem('laben_notif_enabled') === '1') {
-        messageServiceWorker({ type: 'START_WATCH' });
-      }
+      if (notifEnabled) postToSW({ type:'START_WATCH' });
     })
-    .catch(err => {
-      console.warn('SW registration failed:', err.message);
-      // SW registration failing is expected on HTTP — that's fine
-    });
+    .catch(err => console.warn('SW registration failed:', err.message));
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
