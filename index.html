@@ -364,12 +364,11 @@
           <i class="bi bi-bell-fill"></i> Enable Notifications
         </button>
         <div class="notif-setup-steps" style="margin-top:10px;">
-          <strong>⚙️ For this to work you need:</strong><br>
-          ✅ VAPID key already set in app.js<br>
-          ✅ <strong>firebase-messaging-sw.js</strong> placed at your site root<br>
-          ✅ Site hosted on <strong>HTTPS</strong> (Firebase Hosting / GitHub Pages)<br>
-          <br>
-          Once enabled → new orders alert you even when screen is off 🔔
+          <strong>⚙️ Requires:</strong><br>
+          ✅ VAPID key set in app.js<br>
+          ✅ <code>firebase-messaging-sw.js</code> at site root<br>
+          ✅ Site on <strong>HTTPS</strong> (Firebase Hosting / GitHub Pages)<br>
+          <span style="color:#dc2626;">❌ Does NOT work on HTTP or file://</span>
         </div>
       </div>
 
