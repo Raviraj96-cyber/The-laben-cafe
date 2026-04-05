@@ -1,167 +1,163 @@
 // ============================================================
-// firebase-messaging-sw.js
-// ⚠️  PLACE THIS FILE AT YOUR SITE ROOT — same folder as index.html
-//     e.g. if index.html is at  public/index.html
-//          this file must be at public/firebase-messaging-sw.js
+// firebase-messaging-sw.js  ·  The Laben Café
+// PLACE THIS FILE AT YOUR SITE ROOT — same folder as index.html
+//   cPanel/Hostinger → public_html/firebase-messaging-sw.js
+//   Firebase Hosting → public/firebase-messaging-sw.js
 // ============================================================
 
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+const DB_URL = 'https://laben-cafe-default-rtdb.asia-southeast1.firebasedatabase.app';
 
-const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyAQ_8cq9DWzXb5bgl2SpY5xI5TYKd-6dfA",
-  authDomain:        "laben-cafe.firebaseapp.com",
-  databaseURL:       "https://laben-cafe-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId:         "laben-cafe",
-  storageBucket:     "laben-cafe.firebasestorage.app",
-  messagingSenderId: "236045385314",
-  appId:             "1:236045385314:web:a363accd4d0b9f0fe35b3b"
+// ── IndexedDB: track seen order IDs ──────────────────────────────────────────
+const IDB = {
+  _db: null,
+  open() {
+    if (this._db) return Promise.resolve(this._db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('laben-sw', 2);
+      r.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('seen')) db.createObjectStore('seen', { keyPath: 'id' });
+      };
+      r.onsuccess = e => { this._db = e.target.result; res(this._db); };
+      r.onerror   = e => rej(e.target.error);
+    });
+  },
+  async has(id) {
+    try {
+      const db = await this.open();
+      return new Promise(res => {
+        const req = db.transaction('seen','readonly').objectStore('seen').get(id);
+        req.onsuccess = e => res(!!e.target.result);
+        req.onerror   = () => res(false);
+      });
+    } catch(e) { return false; }
+  },
+  async mark(id) {
+    try {
+      const db = await this.open();
+      return new Promise(res => {
+        const tx = db.transaction('seen','readwrite');
+        tx.objectStore('seen').put({ id, ts: Date.now() });
+        tx.oncomplete = res; tx.onerror = res;
+      });
+    } catch(e) {}
+  },
+  async cleanup() {
+    try {
+      const db = await this.open();
+      const cutoff = Date.now() - 86400000;
+      const tx = db.transaction('seen','readwrite');
+      const store = tx.objectStore('seen');
+      const req = store.openCursor();
+      req.onsuccess = e => {
+        const cursor = e.target.result;
+        if (!cursor) return;
+        if ((cursor.value.ts||0) < cutoff) store.delete(cursor.value.id);
+        cursor.continue();
+      };
+    } catch(e) {}
+  }
 };
 
-if (!self.firebase || !self.firebase.apps.length) {
-  firebase.initializeApp(FIREBASE_CONFIG);
-}
-
-let messaging;
-try { messaging = firebase.messaging(); } catch(e) { console.warn('[SW] FCM init:', e.message); }
-
-// ── Show a notification ───────────────────────────────────────────────────
-function showOrderNotification(title, body, orderId) {
+// ── Show notification ─────────────────────────────────────────────────────────
+function showNotif(title, body, orderId) {
+  const tag = orderId ? 'laben-order-' + orderId : 'laben-order';
   return self.registration.showNotification(title, {
     body,
     icon:    '/icon-192.png',
-    badge:   '/icon-72.png',
-    tag:     orderId ? 'order-' + orderId : 'laben-new-order',
+    badge:   '/icon-192.png',
+    tag,
     renotify: true,
-    vibrate: [400, 100, 400, 100, 400],
+    vibrate: [300, 100, 300, 100, 300],
     requireInteraction: true,
-    data: { url: '/?openAdmin=1', orderId: orderId || '' },
-    actions: [
-      { action: 'view',    title: '👀 View Order' },
-      { action: 'dismiss', title: '✕ Dismiss'     }
-    ]
+    data: { url: '/?openAdmin=1', orderId: orderId || '' }
   });
 }
 
-// ── FCM background message (tab closed / background) ─────────────────────
-if (messaging) {
-  messaging.onBackgroundMessage(payload => {
-    const data  = payload.data        || {};
-    const notif = payload.notification || {};
-    const title   = data.title   || notif.title  || '🛎️ New Order! — The Laben Café';
-    const body    = data.body    || notif.body   || 'A new order just arrived.';
-    const orderId = data.orderId || '';
-    return showOrderNotification(title, body, orderId);
-  });
-}
-
-// ── IndexedDB helpers (track which orders we already notified) ────────────
-const IDB_NAME  = 'laben-sw-db';
-const IDB_STORE = 'seen-orders';
-
-function openIDB() {
-  return new Promise((res, rej) => {
-    const r = indexedDB.open(IDB_NAME, 1);
-    r.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE, { keyPath: 'id' });
-    r.onsuccess = e => res(e.target.result);
-    r.onerror   = e => rej(e.target.error);
-  });
-}
-function idbHasSeen(db, id) {
-  return new Promise(res => {
-    const r = db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(id);
-    r.onsuccess = e => res(!!e.target.result);
-    r.onerror   = () => res(false);
-  });
-}
-function idbMarkSeen(db, id) {
-  return new Promise(res => {
-    const tx = db.transaction(IDB_STORE,'readwrite');
-    tx.objectStore(IDB_STORE).put({ id, ts: Date.now() });
-    tx.oncomplete = res; tx.onerror = res;
-  });
-}
-
-// ── Poll Firebase DB for fresh orders ────────────────────────────────────
-async function checkNewOrders() {
-  if (Notification.permission !== 'granted') return;
-  let db;
-  try { db = await openIDB(); } catch(e) { return; }
-
-  const url = FIREBASE_CONFIG.databaseURL +
-    '/orders.json?orderBy=%22timestamp%22&limitToLast=10';
-  let data;
+// ── Poll Firebase REST for new orders ─────────────────────────────────────────
+async function checkOrders() {
   try {
-    const res = await fetch(url);
+    const res = await fetch(
+      DB_URL + '/orders.json?orderBy=%22timestamp%22&limitToLast=15',
+      { cache: 'no-store' }
+    );
     if (!res.ok) return;
-    data = await res.json();
-  } catch(e) { return; }
+    const data = await res.json();
+    if (!data || typeof data !== 'object') return;
 
-  if (!data || typeof data !== 'object') return;
-  const now = Date.now();
+    const now = Date.now();
+    const entries = Object.values(data).filter(Boolean);
 
-  for (const order of Object.values(data)) {
-    if (!order || !order.id) continue;
-    const age = now - (order.timestamp || 0);
-    if (age > 120000) { await idbMarkSeen(db, order.id); continue; } // older than 2 min → skip
-    if (await idbHasSeen(db, order.id)) continue;
-    await idbMarkSeen(db, order.id);
-    const title = '🛎️ New Order #' + order.id + ' — The Laben Café';
-    const body  = (order.name || 'Customer') + ' · ₹' + (order.total || '?') + ' · ' + (order.payment || 'COD');
-    await showOrderNotification(title, body, order.id);
-  }
+    for (const order of entries) {
+      if (!order || !order.id) continue;
+      const age = now - (order.timestamp || 0);
+      if (age > 180000) { await IDB.mark(order.id); continue; }
+      if (await IDB.has(order.id)) continue;
+      await IDB.mark(order.id);
+
+      const title = '🛎️ New Order #' + order.id + ' — The Laben Café';
+      const body  = (order.name || 'Customer') + ' · ₹' + (order.total || '?') + ' · ' + (order.payment || 'COD');
+      await showNotif(title, body, order.id);
+    }
+
+    await IDB.cleanup();
+  } catch(e) {}
 }
 
-// ── Messages from main page ───────────────────────────────────────────────
+// ── Message from main page ───────────────────────────────────────────────────
 self.addEventListener('message', event => {
   if (!event.data) return;
   const { type, title, body, orderId } = event.data;
 
   if (type === 'NEW_ORDER') {
-    // Main page says: show this notification right now
-    showOrderNotification(
+    IDB.mark(orderId || ('manual-' + Date.now()));
+    showNotif(
       title   || '🛎️ New Order! — The Laben Café',
       body    || 'A new order just arrived.',
       orderId || ''
     );
   }
-  if (type === 'START_WATCH' || type === 'CHECK_ORDERS') {
-    checkNewOrders();
+  if (type === 'CHECK_ORDERS' || type === 'START_WATCH') {
+    checkOrders();
+  }
+  if (type === 'MARK_SEEN' && orderId) {
+    IDB.mark(orderId);
   }
 });
 
-// ── Notification tap ──────────────────────────────────────────────────────
+// ── Notification click ───────────────────────────────────────────────────────
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  if (event.action === 'dismiss') return;
   const url = (event.notification.data && event.notification.data.url) || '/?openAdmin=1';
   event.waitUntil(
-    clients.matchAll({ type:'window', includeUncontrolled:true }).then(list => {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       for (const c of list) {
-        if (c.url.includes(self.location.origin) && 'focus' in c) {
-          c.focus(); c.postMessage({ type:'OPEN_ADMIN' }); return;
-        }
+        if ('focus' in c) { c.focus(); c.postMessage({ type: 'OPEN_ADMIN' }); return; }
       }
       if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });
 
-// ── Periodic background sync ──────────────────────────────────────────────
-self.addEventListener('periodicsync', event => {
-  if (event.tag === 'check-orders') event.waitUntil(checkNewOrders());
-});
-
-// ── Raw push fallback ─────────────────────────────────────────────────────
+// ── Raw push fallback ────────────────────────────────────────────────────────
 self.addEventListener('push', event => {
-  if (!event.data) { event.waitUntil(checkNewOrders()); return; }
-  let p; try { p = event.data.json(); } catch(e) { event.waitUntil(checkNewOrders()); return; }
-  if (p.from) return; // FCM already handled via onBackgroundMessage
-  const t = (p.notification && p.notification.title) || '🛎️ New Order!';
-  const b = (p.notification && p.notification.body)  || 'New order at The Laben Café.';
-  event.waitUntil(showOrderNotification(t, b, ''));
+  let payload = null;
+  try { payload = event.data ? event.data.json() : null; } catch(e) {}
+  if (payload && payload.notification) {
+    const t  = payload.notification.title || '🛎️ New Order!';
+    const b  = payload.notification.body  || 'New order received.';
+    const id = (payload.data && payload.data.orderId) || '';
+    event.waitUntil(showNotif(t, b, id));
+  } else {
+    event.waitUntil(checkOrders());
+  }
 });
 
-// ── Lifecycle ─────────────────────────────────────────────────────────────
+// ── Periodic sync ────────────────────────────────────────────────────────────
+self.addEventListener('periodicsync', event => {
+  if (event.tag === 'laben-check-orders') event.waitUntil(checkOrders());
+});
+
+// ── Lifecycle ────────────────────────────────────────────────────────────────
 self.addEventListener('install',  () => self.skipWaiting());
 self.addEventListener('activate', e  => e.waitUntil(clients.claim()));
